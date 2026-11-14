@@ -18,8 +18,9 @@
 
 ## B. Decisions the owner must make first (Gate 0)
 
-- [ ] **B-1** Read current Vercel Hobby terms. Confirm a church ministry tool qualifies. Save the written answer. (`Z-01`)
-- [ ] **B-2** Confirm Hobby cron can run Sundays at 13:00 and 13:30 UTC. (`Z-02`)
+- [ ] **B-1** Ask Vercel in writing (vercel.com/help): does a church ministry app with no revenue qualify for Hobby? Terms say "personal or non-commercial use" and do not define it. Save the reply. (`Z-01`)
+- [ ] **B-2** Decide scheduler. Legacy Cron on Hobby fails `DEC-01`. Vercel Schedules (beta) runs up to 15 minutes late. Accept the delay or choose another option. (`Z-02`)
+- [ ] **B-2a** Turn off Model Training in the Vercel team settings. Hobby content may be used for AI training. (`Z-07`)
 - [ ] **B-3** Provide the "ZERO-COST INFRASTRUCTURE POLICY" document. It is not in the repository.
 - [ ] **B-4** Domain: use `*.vercel.app`, or give a free subdomain. (`Z-06`)
 - [ ] **B-5** Backup method that costs 0 THB. (`D-09`)

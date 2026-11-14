@@ -16,8 +16,8 @@
 
 | # | Action | Closes | Pass condition |
 |---|---|---|---|
-| 0.1 | Read current Vercel Hobby terms. Decide if this ministry use qualifies. Ask Vercel support if unclear. Keep the written answer. | Z-01 / B-1 | Written confirmation that Hobby allows this use |
-| 0.2 | Read Vercel cron usage page. Confirm Hobby can run at 13:00 UTC and 13:30 UTC on Sundays (20:00 and 20:30 ICT) with enough precision. | Z-02 / B-2 | Written confirmation, or owner-approved alternative |
+| 0.1 | Ask Vercel in writing (vercel.com/help) if a church ministry app with no revenue qualifies for Hobby ("personal or non-commercial use"). Keep the reply. Turn off Model Training in team settings. | Z-01, Z-07 / B-1 | Written confirmation from Vercel. Model Training off. |
+| 0.2 | Decide the scheduler. Legacy Cron fails `DEC-01` on Hobby (daily, ±59 min). Vercel Schedules (beta) runs 0–15 min late. Choose: accept 15 min delay (and record it in the decision register), or approve another option. | Z-02 / B-2 | Decision recorded |
 | 0.3 | Supply the "ZERO-COST INFRASTRUCTURE POLICY" document. | L-04 | File added to `docs/` |
 | 0.4 | Decide domain: `*.vercel.app` or free church subdomain. | Z-06 | Decision recorded in the decision register |
 | 0.5 | Decide backup method within 0 THB. | D-09 | Decision recorded |
@@ -49,7 +49,7 @@ These changes were out of scope for Phase 0. I propose them as one approved phas
 | 2.1 | Fail startup in production if `CRON_SECRET` or `AUTH_SESSION_PEPPER` is missing. Remove default strings. | E-01 |
 | 2.2 | Disable demo seed and demo switch when `NODE_ENV=production`. Add explicit bootstrap command for the first `super_admin`. | D-05, D-06 |
 | 2.3 | Gate runtime `ensureSchema` behind an explicit flag. Add a schema version table. | D-04, D-05 |
-| 2.4 | Add GET handler for cron routes that checks `Authorization: Bearer`. Remove header `x-cron-secret` fallback. Add `vercel.json` cron entries (UTC times). | V-04, V-05 |
+| 2.4 | Add `vercel.json` schedules (`timezone: Asia/Bangkok`, `requestMethod: POST`, jitter 15) for the approved scheduler. Keep Bearer check. Remove header `x-cron-secret` fallback. Cutoff logic uses the 20:00 deadline, not job start time. | V-04, V-05, Z-02 |
 | 2.5 | Remove `rejectUnauthorized: false`. Use pooled Neon host. Lower pool `max`. | D-02, D-03 |
 | 2.6 | Disable the `line_oidc` action until server-side verification exists. | L-02 |
 | 2.7 | Add GitHub Actions workflow: typecheck and tests. | G-04 |

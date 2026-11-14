@@ -13,16 +13,18 @@
 | Vercel | **No FaithMap project exists. No deployment exists.** |
 | Database | **No Neon project is linked.** No Dev/Preview/Production separation exists. |
 | Environment | No Vercel environment exists to inspect. Code has unsafe default secrets. |
-| Zero-cost | **Not confirmed.** Two Vercel Hobby items are unverified (eligibility, cron). |
+| Zero-cost | **Not confirmed.** Vercel Hobby terms say "personal or non-commercial use" and do not define it. Cron is possible only with Vercel Schedules (beta). |
 | LINE | Nothing is created. Server-side LINE Login verification is not in the code. |
 
-Estimated cost if all conditions hold: **0 THB/month**. Two conditions are unproven (see Z-01, Z-02).
+Estimated cost if all conditions hold: **0 THB/month**. Condition 1 (Hobby eligibility, Z-01) needs written confirmation from Vercel. Condition 2 (Sunday jobs, Z-02) needs an owner decision on a 15-minute delay.
 
-**Blockers to report (not resolved, no architecture change made):**
-- **B-1.** Vercel Hobby may not allow this use. I could not read the official terms (Z-01).
-- **B-2.** Hobby cron may not run at Sunday 20:00 and 20:30 ICT (Z-02). The product rule `DEC-01` needs these times.
+**Blockers to report (no architecture change made):**
+- **B-1 (open).** Vercel Hobby allows only "personal or non-commercial use". The terms do not define "non-commercial" and show no exception for a church or non-profit. See Z-01.
+- **B-2 (open, owner decision).** Legacy Vercel Cron on Hobby runs once per day with ±59 minutes of timing error. This does not meet `DEC-01`. Vercel Schedules (beta) on Hobby starts a run up to 15 minutes late. The 20:30 brief could start at 20:44. See Z-02.
 
-**Method limits.** `vercel.com`, `neon.com` and `www.lycbiz.com` did not resolve from this session. I did not retry other hosts. GitHub pricing was read from github.com. Neon and LINE figures come from search results and the Vercel integration record. These are secondary sources. Each is marked.
+**Update 2026-11-14 (later).** I read the official Vercel pages after `vercel.com` became reachable. Z-01, Z-02, V-05 and a new finding Z-07 now use official text. Section-level notes say which source each fact uses.
+
+**Method limits.** `neon.com` and `www.lycbiz.com` did not resolve from this session. `vercel.com` first failed, then worked after the owner approved a network change. Vercel facts in Z-01, Z-02, Z-07 and V-05 come from vercel.com pages (read 2026-11-14). GitHub pricing was read from github.com. Neon and LINE figures come from search results and the Vercel integration record. These are secondary sources. Each is marked.
 
 **Evidence note.** I did not run tests, builds or migrations. I did not read any environment value. I did not call any write tool.
 
@@ -90,11 +92,11 @@ Estimated cost if all conditions hold: **0 THB/month**. Two conditions are unpro
 - Required action: Add cron configuration in an approved phase (see V-05, Z-02).
 - Owner approval: Yes.
 
-### V-05 — Cron route method mismatch
-- Evidence: Vercel documentation says cron sends an HTTP GET with `Authorization: Bearer <CRON_SECRET>`. The route `src/app/api/internal/jobs/[jobName]/route.ts` exports `POST` only. It also accepts a header `x-cron-secret`.
-- Actual status: A Vercel cron call would return 405. The jobs `cutoff_check` and `generate_meeting_brief` would not run.
-- Risk: **High** (the Sunday 20:00 and 20:30 rules `DEC-01` would not execute).
-- Required action: Add a GET handler or change the schedule method. This is a code change. It is out of scope for Phase 0.
+### V-05 — Cron route method (corrected)
+- Evidence: `src/app/api/internal/jobs/[jobName]/route.ts` exports `POST` only. It accepts `Authorization: Bearer <CRON_SECRET>` or header `x-cron-secret`. Vercel legacy Cron sends GET. Vercel Schedules with a `path` target sends POST by default (`requestMethod` accepts `GET` or `POST`; default `POST`).
+- Actual status: The route works with Vercel Schedules and the default method. It would return 405 with legacy Cron. My first version of this finding assumed legacy Cron only. That was incomplete.
+- Risk: Medium. It depends on which scheduler the owner approves (Z-02).
+- Required action: Use Schedules with POST, or add a GET handler. Either is a code change for an approved phase.
 - Owner approval: Yes.
 
 ### V-06 — Build and framework (expected, not observable)
@@ -221,18 +223,22 @@ No Vercel project exists. I read no values. I did not call the environment-varia
 | LINE OA Thailand | Free plan | 0 THB | Search results only. Not read from LINE |
 | LINE Login, LIFF, Messaging API | — | 0 THB (expected) | Not verified |
 
-### Z-01 — Vercel Hobby eligibility (BLOCKER B-1, unresolved)
-- Evidence: Account billing plan is `hobby`. I could not read `vercel.com/legal/terms` or the Hobby plan page (`ENOTFOUND vercel.com`). The documentation search tool returned no text about commercial-use limits.
-- Actual status: **Unverified.** I will not state the rule from memory.
-- Risk: **High.** If Hobby bans this use, the project cannot stay at 0 THB on Vercel.
-- Required action: Owner reads the current Hobby terms and decides whether a church ministry tool qualifies. If unclear, the owner asks Vercel support in writing and stores the answer. I do not replace Vercel.
+### Z-01 — Vercel Hobby eligibility (B-1, open)
+- Evidence: Terms of Service section 4 (vercel.com/legal/terms, read 2026-11-14): "You shall only use the Services under a Hobby plan for your personal or non-commercial use." The same section: Vercel "may shut down and terminate projects or deployments using the Hobby plan without notice for any reason or no reason." Search of the terms for "church", "charity", "nonprofit" and "non-profit" finds no match. The terms do not define "non-commercial". The Hobby plan page (updated 2026-11-12) states no use rule.
+- Actual status: **Not confirmed.** FaithMap is for an organization, not for personal use. It earns no revenue. Whether Vercel counts this as "non-commercial" is not in the published text.
+- Risk: **High.** Vercel can remove a Hobby project without notice. Sunday reporting would stop.
+- Required action: Owner asks Vercel in writing (vercel.com/help) whether a church ministry app with no revenue qualifies for Hobby. Owner stores the reply. If Vercel says no, stop and report. Do not replace the host without owner approval.
 - Owner approval: Yes.
 
-### Z-02 — Vercel Hobby cron (BLOCKER B-2, unresolved)
-- Evidence: Two documentation searches returned cron syntax and `CRON_SECRET` examples. They returned no Hobby frequency limit. I could not read the usage page.
-- Actual status: **Unverified.** `DEC-01` needs a job at Sunday 20:00 ICT (13:00 UTC) and a job at 20:30 ICT (13:30 UTC). If Hobby limits cron frequency or precision, these times fail.
-- Risk: **High.**
-- Required action: Owner or a later session reads the cron usage page when `vercel.com` is reachable. Alternative schedulers are architecture changes and need owner approval.
+### Z-02 — Vercel scheduling on Hobby (B-2, open, owner decision)
+- Evidence (vercel.com pages, read 2026-11-14):
+  - Legacy Cron Jobs, Hobby: "Hobby accounts are limited to cron jobs that run once per day." Timing: "Per-hour (±59 min)". Example: `0 1 * * *` runs "anywhere between 1:00 am and 1:59 am". The page calls Cron Jobs "a legacy feature".
+  - Vercel Schedules (public beta), Hobby: most frequent run every 15 minutes. Jitter window is always 15 minutes. "A schedule set for 09:00 with a 5-minute jitter window starts at some point between 09:00 and 09:05." Schedules support an IANA `timezone` (for example `Asia/Bangkok`). The Schedules page says limits "may change before general availability". Hobby allows 5,000 runs per billing period. At the limit, "Vercel skips" scheduled runs until the next period.
+- Actual status:
+  - Legacy Cron: **does not meet `DEC-01`.** The 20:00 job could start at 20:59. The 20:30 job could start before the 20:00 job. The brief could be generated before the cutoff check.
+  - Schedules (beta): the 20:00 job starts 20:00–20:15 ICT. The 20:30 job starts 20:30–20:45 ICT. The two windows do not overlap, so the order is kept. The brief can be up to 15 minutes late.
+- Risk: **High** for the legacy option. **Medium** for Schedules (beta feature, 15-minute delay).
+- Required action: Owner chooses: (a) Schedules on Hobby and accept up to 15 minutes delay; (b) change `DEC-01` to allow the delay; (c) another approved scheduler. Option (c) is an architecture change. Cutoff logic must also use the deadline time (20:00), not the time the job starts.
 - Owner approval: Yes.
 
 ### Z-03 — Neon Free limits
@@ -261,6 +267,13 @@ No Vercel project exists. I read no values. I did not call the environment-varia
 - Actual status: A custom domain costs money. A `*.vercel.app` name costs 0 THB.
 - Risk: Medium.
 - Required action: Owner decides: use `*.vercel.app` for the pilot, or provide a free subdomain from an existing church domain.
+- Owner approval: Yes.
+
+### Z-07 — Vercel Hobby content and AI-training clause (new)
+- Evidence: Terms of Service section 3 (vercel.com/legal/terms, read 2026-11-14): "if you are on a Hobby plan or trial Pro plan, you agree that we may use Your Content to train our artificial intelligence ('AI') and machine learning models, and we may share Your Content with third parties". "You may opt-out of Model Training at any time by adjusting your Team account settings or by upgrading to an Enterprise plan." The terms also require that you "will not expose personal data or personal information without proper consent".
+- Actual status: Not checked in the account settings (read-only phase). Database content sits on Neon, not on Vercel. Source code, build output and logs sit on Vercel. Hobby runtime logs keep 1 hour.
+- Risk: Medium–High for PDPA (`DEC-06`, `DEC-10`). Member phone numbers, addresses or absence notes must never appear in code, logs or error text.
+- Required action: Owner turns off Model Training in the Vercel team settings before the first deploy and records the screen result. Add a log-redaction test in an approved phase.
 - Owner approval: Yes.
 
 ---
@@ -308,8 +321,8 @@ No Vercel project exists. I read no values. I did not call the environment-varia
 
 | Risk | IDs |
 |---|---|
-| High | V-01, V-02, V-05, D-01, D-04, D-05, D-06, D-08, D-09, E-01, Z-01, Z-02, Z-05, L-02 |
-| Medium | G-04, V-03, V-04, D-02, D-03, D-07, E-02, E-03, Z-03, Z-06, L-01, L-03, L-04, L-05 |
+| High | V-01, V-02, D-01, D-04, D-05, D-06, D-08, D-09, E-01, Z-01, Z-02, Z-05, L-02 |
+| Medium | G-04, V-03, V-04, V-05, Z-07, D-02, D-03, D-07, E-02, E-03, Z-03, Z-06, L-01, L-03, L-04, L-05 |
 | Low | G-01, G-02, G-03, V-06, Z-04 |
 
 ## 8. Stop condition
