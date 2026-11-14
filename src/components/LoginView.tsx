@@ -61,23 +61,11 @@ export function LoginView({
   }
 
   async function handleLineDemoConnect() {
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      await apiRequest('/api/v1/auth', {
-        method: 'POST',
-        body: {
-          action: 'line_oidc',
-          lineSubject: 'UlineWichai003',
-          displayName: 'วิชัย LINE (โนนทัน)',
-        },
-      });
-      await onAuthenticated();
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'เชื่อมต่อ LINE Login ไม่สำเร็จ');
-    } finally {
-      setLoading(false);
-    }
+    // Real LINE sign-in is added with the LINE MINI App (needs owner-created LINE channel).
+    // The old demo call sent a fixed LINE ID to the server. That call is removed for security.
+    setErrorMsg(
+      'การเข้าสู่ระบบด้วย LINE ยังไม่เปิดใช้งาน กรุณาเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านไปก่อน'
+    );
   }
 
   return (

@@ -28,6 +28,18 @@
 - [ ] **B-7** Keep or remove Supabase and Clerk integrations.
 - [ ] **B-8** Is the GitHub repository private or public? Record the answer. (Affects Actions minutes.)
 
+### Text for B-1 (send from the Vercel account owner, at vercel.com/help)
+
+> Our team is a church ministry (Kalasin, Thailand). We built an internal web app for volunteer group leaders to submit weekly reports. It has no ads, no sales and no revenue. About 100 volunteers will use it. Your Terms say the Hobby plan is for "personal or non-commercial use". Does this use qualify for the Hobby plan? Please reply in writing. If it does not qualify, please say so.
+
+**Why:** the Terms do not define "non-commercial". **Free:** yes. **If not done:** the project can be removed by Vercel without notice, or the owner must choose another free host. **Return:** the reply text, saved in `docs/`.
+
+### Other new owner actions (from the execution status)
+
+- [ ] **N-1** Create the first super admin locally after the database exists: set the three `FAITHMAP_BOOTSTRAP_*` values in your own terminal (never in chat), set `DATABASE_URL` to the Neon **production** branch, run `npm run db:bootstrap-admin`. Free. If skipped: nobody can sign in to production.
+- [ ] **N-2** Set `AUTH_SESSION_PEPPER` and `CRON_SECRET` in Vercel (Production, Preview) as sensitive values of 32+ random characters. Free. If skipped: production refuses to run.
+- [ ] **N-3** Do **not** set `LINE_OA_CHANNEL_ACCESS_TOKEN` yet. A quota guard does not exist. Free. If set too early: real messages could be sent and use the free quota.
+
 ## C. Vercel (after Gate 0)
 
 - [ ] C-1 Create project `faithmap`. Import `tlckalasinchurch/faithmap`.

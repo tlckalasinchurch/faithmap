@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx src/server/db/run-migrate.ts",
-    "db:seed": "tsx src/server/db/run-seed.ts"
+    "db:seed": "tsx src/server/db/run-seed.ts",
+    "db:bootstrap-admin": "tsx src/server/db/run-bootstrap-admin.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",

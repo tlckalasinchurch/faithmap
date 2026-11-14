@@ -15,7 +15,7 @@ import {
 import {
   authenticateSessionToken,
   enrollPasskey,
-  loginWithLineSubject,
+  isDemoModeEnabled,
   loginWithPassword,
   logoutBySessionToken,
   switchDemoAccount,
@@ -36,11 +36,6 @@ const authActionSchema = z.discriminatedUnion('action', [
     userId: z.string().uuid(),
   }),
   z.object({
-    action: z.literal('line_oidc'),
-    lineSubject: z.string().min(1),
-    displayName: z.string().optional(),
-  }),
-  z.object({
     action: z.literal('logout'),
   }),
   z.object({
@@ -56,7 +51,7 @@ export async function GET(req: NextRequest) {
     const db = await getReadyDb();
     const rawToken = extractRawSessionToken(req);
     const actor = await authenticateSessionToken(db, rawToken);
-    const demoEnabled = process.env.FAITHMAP_DEMO_MODE !== 'false';
+    const demoEnabled = isDemoModeEnabled();
 
     const demoAccounts = demoEnabled
       ? await db
@@ -139,15 +134,8 @@ export async function POST(req: NextRequest) {
     let loginResult: Awaited<ReturnType<typeof loginWithPassword>>;
     if (data.action === 'login_password') {
       loginResult = await loginWithPassword(db, data.username, data.password, meta);
-    } else if (data.action === 'demo_switch') {
-      loginResult = await switchDemoAccount(db, data.userId, meta);
     } else {
-      loginResult = await loginWithLineSubject(
-        db,
-        data.lineSubject,
-        data.displayName,
-        meta
-      );
+      loginResult = await switchDemoAccount(db, data.userId, meta);
     }
 
     const res = NextResponse.json({

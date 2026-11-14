@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, lte } from 'drizzle-orm';
 import { getReadyDb } from '@/server/db/bootstrap';
+import { isCronRequestAuthorized } from '@/server/http/cron-auth';
 import { reportingPeriods } from '@/server/db/schema';
 import {
   executeCutoffCheckJob,
@@ -10,11 +11,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET || 'faithmap-dev-cron-secret-change-in-prod';
-  const headerSecret = req.headers.get('x-cron-secret');
-  const auth = req.headers.get('authorization');
-  const bearer = auth && auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
-  return headerSecret === expected || bearer === expected;
+  return isCronRequestAuthorized(req.headers.get('authorization'));
 }
 
 export async function POST(

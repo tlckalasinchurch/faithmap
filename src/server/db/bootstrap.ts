@@ -1,6 +1,6 @@
 import { getDbRuntime, type DbRuntime, type FaithMapDb } from './client';
 import { ensureSchema } from './migrate';
-import { ensureSeeded } from './seed';
+import { ensureSeeded, shouldAutoSeed } from './seed';
 
 const globalForBootstrap = globalThis as unknown as {
   __faithmapBootstrapPromise?: Promise<DbRuntime>;
@@ -11,7 +11,7 @@ export async function getReadyRuntime(): Promise<DbRuntime> {
     globalForBootstrap.__faithmapBootstrapPromise = (async () => {
       const runtime = getDbRuntime();
       await ensureSchema(runtime);
-      await ensureSeeded(runtime.db);
+      if (shouldAutoSeed(runtime.driver)) await ensureSeeded(runtime.db);
       return runtime;
     })();
   }

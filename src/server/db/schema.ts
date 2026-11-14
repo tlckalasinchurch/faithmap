@@ -1080,3 +1080,56 @@ export const candidateLocationMatches = pgTable(
     index('candidate_loc_status_idx').on(t.matchStatus),
   ]
 );
+
+/** One-time challenges for LINE identity flows. The raw nonce is never stored. */
+export const authChallenges = pgTable(
+  'auth_challenges',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    purpose: text('purpose').notNull(),
+    nonceHash: text('nonce_hash').notNull().unique(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    ipAddress: text('ip_address'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'auth_challenges_purpose_chk',
+      sql`${t.purpose} IN ('line_link', 'line_login', 'line_register')`
+    ),
+    index('auth_challenges_expires_idx').on(t.expiresAt),
+  ]
+);
+
+/** LINE-first registration requests. A request grants nothing until a super_admin approves it. */
+export const lineRegistrationRequests = pgTable(
+  'line_registration_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    lineSubject: text('line_subject').notNull(),
+    lineDisplayName: text('line_display_name'),
+    requestedName: text('requested_name').notNull(),
+    note: text('note'),
+    status: text('status').notNull().default('pending'),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewReason: text('review_reason'),
+    createdUserId: uuid('created_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'line_registration_status_chk',
+      sql`${t.status} IN ('pending', 'approved', 'rejected')`
+    ),
+    uniqueIndex('line_registration_pending_subject_uidx')
+      .on(t.lineSubject)
+      .where(sql`${t.status} = 'pending'`),
+    index('line_registration_status_idx').on(t.status, t.createdAt),
+  ]
+);

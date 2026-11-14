@@ -804,6 +804,38 @@ CREATE INDEX IF NOT EXISTS assignments_care_active_idx ON assignments(care_id, e
 ALTER TABLE period_group_snapshots ALTER COLUMN body_id DROP NOT NULL;
 ALTER TABLE period_group_snapshots ALTER COLUMN body_name_snapshot SET DEFAULT 'รอจัดสรรบอดี้';
 ALTER TABLE weekly_reports ALTER COLUMN body_id DROP NOT NULL;
+
+CREATE TABLE IF NOT EXISTS auth_challenges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  purpose TEXT NOT NULL,
+  nonce_hash TEXT NOT NULL UNIQUE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  ip_address TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT auth_challenges_purpose_chk CHECK (purpose IN ('line_link', 'line_login', 'line_register'))
+);
+CREATE INDEX IF NOT EXISTS auth_challenges_expires_idx ON auth_challenges(expires_at);
+
+CREATE TABLE IF NOT EXISTS line_registration_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  line_subject TEXT NOT NULL,
+  line_display_name TEXT,
+  requested_name TEXT NOT NULL,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  reviewed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  review_reason TEXT,
+  created_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT line_registration_status_chk CHECK (status IN ('pending', 'approved', 'rejected'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS line_registration_pending_subject_uidx
+  ON line_registration_requests(line_subject) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS line_registration_status_idx ON line_registration_requests(status, created_at);
 `;
 
 export async function ensureSchema(runtime: DbRuntime): Promise<void> {

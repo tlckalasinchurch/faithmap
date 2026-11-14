@@ -1,7 +1,18 @@
 import crypto from 'node:crypto';
 
-const PEPPER =
-  process.env.AUTH_SESSION_PEPPER || 'faithmap-dev-session-pepper-change-in-prod';
+const DEV_PEPPER = 'faithmap-dev-session-pepper-not-for-production';
+
+/** Read at call time so `next build` works without secrets. Production never uses a default. */
+function getPepper(): string {
+  const value = process.env.AUTH_SESSION_PEPPER;
+  if (process.env.NODE_ENV === 'production') {
+    if (!value || value.length < 32) {
+      throw new Error('AUTH_SESSION_PEPPER must be set to at least 32 characters in production.');
+    }
+    return value;
+  }
+  return value || DEV_PEPPER;
+}
 
 export function hashPassword(plainPassword: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -26,7 +37,7 @@ export function generateOpaqueToken(): string {
 }
 
 export function hashSessionToken(rawToken: string): string {
-  return crypto.createHmac('sha256', PEPPER).update(rawToken).digest('hex');
+  return crypto.createHmac('sha256', getPepper()).update(rawToken).digest('hex');
 }
 
 export function hashRequestPayload(payload: unknown): string {

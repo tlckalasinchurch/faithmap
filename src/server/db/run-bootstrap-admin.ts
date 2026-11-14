@@ -1,0 +1,25 @@
+import { getDbRuntime } from './client';
+import { ensureSchema } from './migrate';
+import { createFirstSuperAdmin } from '../modules/identity/bootstrap';
+
+// Usage (owner, local terminal; values come from the owner's own shell, never from chat):
+//   FAITHMAP_BOOTSTRAP_USERNAME=... FAITHMAP_BOOTSTRAP_NAME=... FAITHMAP_BOOTSTRAP_PASSWORD=... \
+//   DATABASE_URL=... npm run db:bootstrap-admin
+async function main() {
+  const username = process.env.FAITHMAP_BOOTSTRAP_USERNAME ?? '';
+  const displayName = process.env.FAITHMAP_BOOTSTRAP_NAME ?? '';
+  const password = process.env.FAITHMAP_BOOTSTRAP_PASSWORD ?? '';
+  const runtime = getDbRuntime();
+  try {
+    await ensureSchema(runtime);
+    const created = await createFirstSuperAdmin(runtime.db, { username, displayName, password });
+    console.log(`Super admin created: ${created.username}`);
+  } finally {
+    await runtime.close();
+  }
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : 'Bootstrap failed');
+  process.exit(1);
+});

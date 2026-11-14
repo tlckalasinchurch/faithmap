@@ -58,7 +58,30 @@ export const SEED_IDS = {
   },
 };
 
+/**
+ * Demo data is created on its own only for a local PGlite database outside production,
+ * or when demo mode is explicitly on. A remote PostgreSQL database is never seeded implicitly.
+ */
+export function shouldAutoSeed(
+  driver: 'pglite' | 'postgres',
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  if (env.NODE_ENV === 'production') return false;
+  return driver === 'pglite' || env.FAITHMAP_DEMO_MODE === 'true';
+}
+
+/** Explicit seed commands against a remote database need FAITHMAP_ALLOW_REMOTE_SEED=true. */
+export function isExplicitSeedAllowed(
+  driver: 'pglite' | 'postgres',
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return driver === 'pglite' || env.FAITHMAP_ALLOW_REMOTE_SEED === 'true';
+}
+
 export async function ensureSeeded(db: FaithMapDb): Promise<boolean> {
+  // Demo accounts use a published password. Never create them in production.
+  if (process.env.NODE_ENV === 'production') return false;
+
   const existing = await db.select({ total: count() }).from(organizationSettings);
   if ((existing[0]?.total ?? 0) > 0) {
     return false;

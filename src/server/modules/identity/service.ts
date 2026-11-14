@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, count, eq, gt, inArray, isNull } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
@@ -7,6 +7,7 @@ import {
   cares,
   externalIdentities,
   houseMissionGroups,
+  securityAuditLogs,
   userPasskeys,
   users,
 } from '@/server/db/schema';
@@ -203,7 +204,7 @@ export async function buildActorContext(
   };
 }
 
-async function issueSessionForUser(
+export async function issueSessionForUser(
   db: FaithMapDb,
   userRow: typeof users.$inferSelect,
   authMethod: string,
@@ -274,17 +275,20 @@ export async function loginWithPassword(
   plainPassword: string,
   meta?: { userAgent?: string | null; ipAddress?: string | null }
 ) {
+  const normalizedUsername = username.trim().toLowerCase();
+  await assertPasswordLoginAllowed(db, normalizedUsername, meta?.ipAddress ?? null);
+
   const [userRow] = await db
     .select()
     .from(users)
-    .where(eq(users.username, username.trim().toLowerCase()));
+    .where(eq(users.username, normalizedUsername));
 
   if (!userRow || !verifyPassword(plainPassword, userRow.passwordHash)) {
     await recordSecurityAudit(db, {
       actorUserId: userRow?.id ?? null,
       action: 'auth_login_password_failed',
       targetType: 'user',
-      targetId: username,
+      targetId: normalizedUsername,
       ipAddress: meta?.ipAddress ?? null,
       outcome: 'denied',
       reason: 'Invalid username or password',
@@ -299,12 +303,63 @@ export async function loginWithPassword(
   return issueSessionForUser(db, userRow, 'password', meta);
 }
 
+/**
+ * Demo account switching signs in as any account without a credential.
+ * It is OFF unless FAITHMAP_DEMO_MODE is exactly "true", and it is always OFF in production.
+ */
+export function isDemoModeEnabled(): boolean {
+  return process.env.FAITHMAP_DEMO_MODE === 'true' && process.env.NODE_ENV !== 'production';
+}
+
+export const PASSWORD_LOGIN_MAX_FAILURES_PER_USERNAME = 5;
+export const PASSWORD_LOGIN_MAX_FAILURES_PER_IP = 20;
+export const PASSWORD_LOGIN_WINDOW_MS = 15 * 60_000;
+
+async function assertPasswordLoginAllowed(
+  db: FaithMapDb,
+  normalizedUsername: string,
+  ipAddress: string | null
+): Promise<void> {
+  const since = new Date(Date.now() - PASSWORD_LOGIN_WINDOW_MS);
+  const [byUser] = await db
+    .select({ n: count() })
+    .from(securityAuditLogs)
+    .where(
+      and(
+        eq(securityAuditLogs.action, 'auth_login_password_failed'),
+        eq(securityAuditLogs.targetId, normalizedUsername),
+        gt(securityAuditLogs.createdAt, since)
+      )
+    );
+  let blocked = (byUser?.n ?? 0) >= PASSWORD_LOGIN_MAX_FAILURES_PER_USERNAME;
+  if (!blocked && ipAddress) {
+    const [byIp] = await db
+      .select({ n: count() })
+      .from(securityAuditLogs)
+      .where(
+        and(
+          eq(securityAuditLogs.action, 'auth_login_password_failed'),
+          eq(securityAuditLogs.ipAddress, ipAddress),
+          gt(securityAuditLogs.createdAt, since)
+        )
+      );
+    blocked = (byIp?.n ?? 0) >= PASSWORD_LOGIN_MAX_FAILURES_PER_IP;
+  }
+  if (blocked) {
+    throw new AppError(
+      429,
+      'RATE_LIMITED',
+      'ลองเข้าสู่ระบบผิดหลายครั้งเกินไป กรุณารอ 15 นาทีแล้วลองใหม่'
+    );
+  }
+}
+
 export async function switchDemoAccount(
   db: FaithMapDb,
   userId: string,
   meta?: { userAgent?: string | null; ipAddress?: string | null }
 ) {
-  if (process.env.FAITHMAP_DEMO_MODE === 'false') {
+  if (!isDemoModeEnabled()) {
     throw new AppError(
       403,
       'DEMO_SWITCH_DISABLED',
@@ -318,49 +373,6 @@ export async function switchDemoAccount(
   }
 
   return issueSessionForUser(db, userRow, 'demo_switch', meta);
-}
-
-export async function loginWithLineSubject(
-  db: FaithMapDb,
-  lineSubject: string,
-  lineDisplayName?: string,
-  meta?: { userAgent?: string | null; ipAddress?: string | null }
-) {
-  const [identity] = await db
-    .select()
-    .from(externalIdentities)
-    .where(
-      and(
-        eq(externalIdentities.provider, 'line'),
-        eq(externalIdentities.providerSubject, lineSubject),
-        isNull(externalIdentities.revokedAt)
-      )
-    );
-
-  if (!identity) {
-    throw new AppError(
-      401,
-      'LINE_IDENTITY_UNLINKED',
-      'บัญชี LINE นี้ยังไม่ได้เชื่อมกับบัญชีผู้ใช้งาน FaithMap กรุณาติดต่อผู้ดูแลระบบ'
-    );
-  }
-
-  const [userRow] = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, identity.userId));
-  if (!userRow) {
-    throw new AppError(401, 'INVALID_CREDENTIALS', 'ไม่พบบัญชีผู้ใช้ที่เชื่อมโยง');
-  }
-
-  if (lineDisplayName && lineDisplayName !== identity.displayName) {
-    await db
-      .update(externalIdentities)
-      .set({ displayName: lineDisplayName, updatedAt: new Date() })
-      .where(eq(externalIdentities.id, identity.id));
-  }
-
-  return issueSessionForUser(db, userRow, 'line_oidc', meta);
 }
 
 export async function authenticateSessionToken(
