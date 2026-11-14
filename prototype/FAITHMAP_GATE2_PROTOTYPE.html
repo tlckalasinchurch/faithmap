@@ -1,0 +1,2305 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaithMap — GATE-2 Interactive Prototype (DEMO)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-canvas: #FAF8F4;
+      --bg-surface: #FFFFFF;
+      --bg-subtle: #F2EFE9;
+      --bg-teal-soft: #E6F2F1;
+      --ink-primary: #182226;
+      --ink-secondary: #48565C;
+      --ink-muted: #65747B;
+      --border-hairline: #E0DDD5;
+      --border-strong: #C4BFB4;
+      --brand-primary: #0F5C5C;
+      --brand-primary-hover: #0B4747;
+      --line-green: #06C755;
+      --line-green-hover: #05B04B;
+      --status-ok-bg: #E6F4EC;
+      --status-ok-ink: #135D36;
+      --status-warn-bg: #FEF4E2;
+      --status-warn-ink: #8A4F04;
+      --status-err-bg: #FCEAEA;
+      --status-err-ink: #991B1B;
+      --status-info-bg: #EBF2FA;
+      --status-info-ink: #1E4976;
+      --radius-sm: 10px;
+      --radius-md: 14px;
+      --radius-lg: 18px;
+      --shadow-sm: 0 1px 2px rgba(24,34,38,0.05);
+      --shadow-md: 0 6px 20px rgba(24,34,38,0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #E8E5DE;
+      color: var(--ink-primary);
+      line-height: 1.55;
+      font-size: 16px;
+    }
+
+    button, input, select, textarea {
+      font-family: inherit;
+      font-size: 1rem;
+    }
+
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid #0F5C5C;
+      outline-offset: 2px;
+    }
+
+    /* Prototype Control Bar */
+    .proto-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #141D21;
+      color: #F5F3EE;
+      padding: 10px 16px;
+      border-bottom: 2px solid #0F5C5C;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .proto-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+    .demo-pill {
+      background: #D97706;
+      color: #141D21;
+      font-weight: 700;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+    .proto-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .proto-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #202D33;
+      padding: 4px 8px;
+      border-radius: 10px;
+    }
+    .proto-group label {
+      font-size: 0.78rem;
+      color: #C7D0D4;
+    }
+    .proto-btn {
+      min-height: 36px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid #394B53;
+      background: #26353C;
+      color: #F5F3EE;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .proto-btn.active {
+      background: #0F5C5C;
+      border-color: #2A9D8F;
+      color: #FFFFFF;
+      font-weight: 700;
+    }
+    .proto-select {
+      min-height: 36px;
+      background: #26353C;
+      color: #FFFFFF;
+      border: 1px solid #394B53;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.85rem;
+    }
+
+    /* Viewport Frame */
+    .stage-wrap {
+      padding: 18px 14px 48px;
+      display: flex;
+      justify-content: center;
+    }
+    .app-frame {
+      width: 100%;
+      max-width: 1240px;
+      background: var(--bg-canvas);
+      border-radius: 20px;
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+      min-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      transition: max-width 0.2s ease;
+    }
+    .app-frame.mobile-mode {
+      max-width: 412px;
+      border: 8px solid #1E282D;
+      border-radius: 30px;
+    }
+
+    /* App Header */
+    .app-header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-hairline);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      background: var(--brand-primary);
+      color: #FFFFFF;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    .brand-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--ink-primary);
+      line-height: 1.2;
+    }
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--ink-muted);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .icon-pill-btn {
+      min-height: 48px;
+      min-width: 48px;
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-surface);
+      color: var(--ink-primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      position: relative;
+    }
+    .icon-pill-btn:hover { background: var(--bg-subtle); }
+    .badge-count {
+      background: #B91C1C;
+      color: #FFFFFF;
+      font-size: 0.75rem;
+      font-weight: 700;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 6px;
+    }
+
+    /* Main Shell */
+    .shell-body {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    .sidebar {
+      width: 268px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-hairline);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .app-frame.mobile-mode .sidebar {
+      display: none;
+    }
+    .nav-btn {
+      min-height: 48px;
+      width: 100%;
+      text-align: left;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .nav-btn:hover { background: var(--bg-subtle); color: var(--ink-primary); }
+    .nav-btn.active {
+      background: var(--bg-teal-soft);
+      color: var(--brand-primary);
+      border-color: #B9D8D6;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 18px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .app-frame.mobile-mode .main-content {
+      padding: 14px;
+      font-size: 1.04rem;
+    }
+
+    /* Mobile Bottom Bar */
+    .mobile-bottom-nav {
+      display: none;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-hairline);
+      padding: 6px 8px;
+      gap: 6px;
+    }
+    .app-frame.mobile-mode .mobile-bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    @media (max-width: 820px) {
+      .sidebar { display: none; }
+      .mobile-bottom-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    .m-nav-btn {
+      min-height: 52px;
+      border-radius: 12px;
+      border: none;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+    .m-nav-btn.active {
+      background: var(--bg-teal-soft);
+      color: var(--brand-primary);
+    }
+
+    /* Cards & Components */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .h1 { font-size: 1.35rem; font-weight: 700; margin: 0; }
+    .h2 { font-size: 1.12rem; font-weight: 700; margin: 0; }
+    .muted { color: var(--ink-muted); font-size: 0.9rem; }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .app-frame.mobile-mode .grid-2,
+    .app-frame.mobile-mode .grid-3,
+    .app-frame.mobile-mode .grid-4 {
+      grid-template-columns: 1fr;
+    }
+    @media (max-width: 760px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+
+    /* Buttons (Minimum 48px touch target >= 44px rule) */
+    .btn {
+      min-height: 48px;
+      padding: 10px 18px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+    .btn:disabled {
+      opacity: 0.52;
+      cursor: not-allowed;
+    }
+    .btn-primary { background: var(--brand-primary); color: #FFFFFF; }
+    .btn-primary:hover:not(:disabled) { background: var(--brand-primary-hover); }
+    .btn-line { background: var(--line-green); color: #FFFFFF; font-size: 1.05rem; }
+    .btn-line:hover:not(:disabled) { background: var(--line-green-hover); }
+    .btn-secondary { background: var(--bg-surface); border-color: var(--border-strong); color: var(--ink-primary); }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg-subtle); }
+    .btn-danger { background: #B91C1C; color: #FFFFFF; }
+    .btn-warn { background: #B45309; color: #FFFFFF; }
+    .btn-full { width: 100%; }
+
+    /* Status Badges */
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .st-ok { background: var(--status-ok-bg); color: var(--status-ok-ink); }
+    .st-warn { background: var(--status-warn-bg); color: var(--status-warn-ink); }
+    .st-err { background: var(--status-err-bg); color: var(--status-err-ink); }
+    .st-info { background: var(--status-info-bg); color: var(--status-info-ink); }
+    .st-neutral { background: var(--bg-subtle); color: var(--ink-secondary); }
+
+    /* Alerts & Banners */
+    .banner {
+      border-radius: 12px;
+      padding: 12px 14px;
+      border: 1px solid;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .banner-warn { background: var(--status-warn-bg); border-color: #F3D19E; color: var(--status-warn-ink); }
+    .banner-err { background: var(--status-err-bg); border-color: #F5BDBD; color: var(--status-err-ink); }
+    .banner-ok { background: var(--status-ok-bg); border-color: #AEE0C3; color: var(--status-ok-ink); }
+    .banner-info { background: var(--status-info-bg); border-color: #B9D2EC; color: var(--status-info-ink); }
+
+    /* Form Controls */
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .field label { font-weight: 600; color: var(--ink-primary); }
+    .input, .select, .textarea {
+      min-height: 48px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-surface);
+      color: var(--ink-primary);
+      width: 100%;
+    }
+    .textarea { min-height: 92px; resize: vertical; }
+    .input:disabled { background: var(--bg-subtle); color: var(--ink-muted); cursor: not-allowed; }
+
+    /* Attendance Pills */
+    .att-row {
+      border: 1px solid var(--border-hairline);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: var(--bg-surface);
+    }
+    .att-pills {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .att-pill {
+      min-height: 48px;
+      border-radius: 10px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-canvas);
+      color: var(--ink-primary);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .att-pill.sel-present { background: #135D36; color: #FFF; border-color: #135D36; }
+    .att-pill.sel-absent { background: #991B1B; color: #FFF; border-color: #991B1B; }
+    .att-pill.sel-leave { background: #8A4F04; color: #FFF; border-color: #8A4F04; }
+    .att-pill.sel-online { background: #1E4976; color: #FFF; border-color: #1E4976; }
+
+    /* Stepper */
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .step-item {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: var(--bg-subtle);
+      color: var(--ink-muted);
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-align: center;
+      border: 1px solid transparent;
+    }
+    .step-item.active {
+      background: var(--bg-teal-soft);
+      color: var(--brand-primary);
+      border-color: var(--brand-primary);
+    }
+    .step-item.done {
+      background: var(--status-ok-bg);
+      color: var(--status-ok-ink);
+    }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-hairline);
+      font-size: 0.92rem;
+    }
+    th { color: var(--ink-secondary); font-weight: 700; background: var(--bg-subtle); }
+
+    /* KPI Box */
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .kpi-val { font-size: 1.7rem; font-weight: 700; color: var(--brand-primary); line-height: 1.2; }
+    .kpi-label { font-size: 0.88rem; color: var(--ink-secondary); font-weight: 600; }
+
+    /* State Bar */
+    .state-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--bg-subtle);
+      border-radius: 10px;
+      font-size: 0.82rem;
+    }
+    .mini-chip {
+      min-height: 36px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-surface);
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .mini-chip.active { background: var(--brand-primary); color: #FFF; border-color: var(--brand-primary); }
+
+    /* Skeleton Loader */
+    .skeleton {
+      height: 18px;
+      border-radius: 8px;
+      background: linear-gradient(90deg, #ECE8E0 25%, #F7F4EE 50%, #ECE8E0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+      margin-bottom: 10px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .checkbox-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      background: var(--bg-canvas);
+      cursor: pointer;
+    }
+    .checkbox-card input[type="checkbox"] {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 200;
+      background: #141D21;
+      color: #FFFFFF;
+      padding: 12px 16px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-md);
+      max-width: 360px;
+      font-weight: 600;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- PROTOTYPE CONTROL BAR (Switch Role, Viewport, UI State) -->
+  <div class="proto-bar" role="region" aria-label="ตัวควบคุม Prototype">
+    <div class="proto-brand">
+      <span class="demo-pill">DEMO PROTOTYPE · GATE-2</span>
+      <span>FaithMap · กาฬสินธุ์ (จันทร์–อาทิตย์ · ปิดส่ง 20:00 · สรุป 20:30)</span>
+    </div>
+    <div class="proto-controls">
+      <div class="proto-group">
+        <label for="roleSelect">บทบาท (Role):</label>
+        <select id="roleSelect" class="proto-select" onchange="switchRole(this.value)">
+          <option value="auth">A. หน้าจอเข้าสู่ระบบ (Auth)</option>
+          <option value="leader" selected>B. ผู้รับผิดชอบกลุ่ม / ผู้ประสานงาน (Mission/Group Leader)</option>
+          <option value="supervisor">C. หัวหน้าแคร์ / ผู้ประสานงาน (Supervisor)</option>
+          <option value="body_leader">D. หัวหน้าบอดี้ (Body Leader)</option>
+          <option value="pastor">E. ศิษยาภิบาล (Pastor)</option>
+          <option value="admin">F. ผู้ดูแลระบบ (Admin)</option>
+        </select>
+      </div>
+      <div class="proto-group">
+        <label>ขนาดจอ:</label>
+        <button id="vpMobile" class="proto-btn active" onclick="setViewport('mobile')">มือถือ (390px)</button>
+        <button id="vpDesktop" class="proto-btn" onclick="setViewport('desktop')">เดสก์ท็อป</button>
+      </div>
+      <button class="proto-btn" onclick="resetDemo()">รีเซ็ตข้อมูล DEMO</button>
+    </div>
+  </div>
+
+  <div class="stage-wrap">
+    <div id="appFrame" class="app-frame mobile-mode">
+      <!-- App Header -->
+      <header class="app-header">
+        <div class="brand-lockup">
+          <div class="logo-mark" aria-hidden="true">FM</div>
+          <div>
+            <div class="brand-title">FaithMap <span class="demo-pill">DEMO</span></div>
+            <div class="brand-sub" id="headerRoleLabel">ระบบบริหารพันธกิจคริสตจักรและรายงานพันธกิจบ้าน</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-pill-btn" onclick="openInbox()" aria-label="กล่องแจ้งเตือน">
+            <span>แจ้งเตือน</span>
+            <span id="unreadBadge" class="badge-count">0</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- App Shell -->
+      <div class="shell-body">
+        <nav id="desktopSidebar" class="sidebar" aria-label="เมนูหลัก"></nav>
+        <main id="mainContent" class="main-content" tabindex="-1"></main>
+      </div>
+
+      <!-- Mobile Bottom Nav -->
+      <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="เมนูมือถือ"></nav>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // =========================================================================
+    // DEMO DATASET (100% Synthetic Kalasin Demo Data — Zero Production/Puntakit)
+    // =========================================================================
+    const INITIAL_STATE = () => ({
+      role: 'leader',
+      tab: 'report',
+      viewport: 'mobile',
+      uiState: 'normal', // normal | loading | empty | error
+      authMode: 'line', // line | liff | password | error | expired
+      pastDeadlineTest: false,
+      selectedGroupId: 'grp-1',
+      reportStep: 1,
+      autosaveText: 'บันทึกฉบับร่างอัตโนมัติแล้ว เวลา 18:42 น. (ยังไม่ส่งรายงาน)',
+      validationErrors: [],
+      submitSuccess: false,
+      revisionTargetId: null,
+      revisionReasonInput: '',
+      selectedBriefSection: 'all',
+      adminSubTab: 'users',
+      inboxFilter: 'all',
+      selectedNotifId: null,
+
+      currentUserByRole: {
+        leader: { id: 'usr-somchai', name: 'คุณสมชาย ใจดี (DEMO)', label: 'ผู้รับผิดชอบกลุ่มบ้านโนนทัน', lineLinked: true },
+        supervisor: { id: 'usr-malee', name: 'คุณมาลี รักสุข (DEMO)', label: 'หัวหน้าแคร์ · ดูแล 2 กลุ่ม', lineLinked: true },
+        body_leader: { id: 'usr-prayut', name: 'อ.ประยุทธ พันธกิจ (DEMO)', label: 'หัวหน้าบอดี้ กาฬสินธุ์เหนือ', lineLinked: true },
+        pastor: { id: 'usr-pastor', name: 'ศบ.วิชัย นำทาง (DEMO)', label: 'ศิษยาภิบาล · ภาพรวมคริสตจักร (จำกัด PII)', lineLinked: true },
+        admin: { id: 'usr-admin', name: 'คุณนภา ผู้ดูแลระบบ (DEMO)', label: 'Admin · ตั้งค่า & แก้ไขจุดติดขัด', lineLinked: true }
+      },
+
+      bodies: [
+        { id: 'body-north', name: 'บอดี้ กาฬสินธุ์เหนือ (DEMO)', leaderIds: ['usr-prayut'], hasUsableBodyLeader: true, coBodyLeaderAvailable: false },
+        { id: 'body-south', name: 'บอดี้ กาฬสินธุ์ใต้ (DEMO)', leaderIds: [], hasUsableBodyLeader: false, coBodyLeaderAvailable: false }
+      ],
+
+      groups: [
+        {
+          id: 'grp-1',
+          name: 'กลุ่มบ้านโนนทัน (DEMO)',
+          bodyId: 'body-north',
+          bodyName: 'บอดี้ กาฬสินธุ์เหนือ',
+          hasSupervisor: true,
+          supervisorName: 'คุณมาลี รักสุข (หัวหน้าแคร์)',
+          leaderUserId: 'usr-somchai',
+          leaderName: 'คุณสมชาย ใจดี',
+          coordinatorNote: null,
+          meetingPlace: 'บ้านคุณสมชาย ต.โนนทัน อ.เมืองกาฬสินธุ์',
+          members: [
+            { id: 'm1', name: 'คุณสมชาย ใจดี', phone: '081-000-1101 (DEMO)', status: 'present', consecutiveAbsent: 0 },
+            { id: 'm2', name: 'คุณยายคำปุ่น ศรีสุข', phone: '081-000-1102 (DEMO)', status: 'present', consecutiveAbsent: 0 },
+            { id: 'm3', name: 'คุณลุงบุญมี ทองดี', phone: '081-000-1103 (DEMO)', status: 'absent', consecutiveAbsent: 2 },
+            { id: 'm4', name: 'คุณนิดา วัฒนา', phone: '081-000-1104 (DEMO)', status: 'online', consecutiveAbsent: 0 }
+          ]
+        },
+        {
+          id: 'grp-2',
+          name: 'กลุ่มบ้านหนองกุง — ไม่มี Supervisor (DEMO)',
+          bodyId: 'body-north',
+          bodyName: 'บอดี้ กาฬสินธุ์เหนือ',
+          hasSupervisor: false,
+          supervisorName: 'ไม่มี Supervisor (ส่งตรงหัวหน้าบอดี้ตาม CD-03)',
+          leaderUserId: 'usr-somchai',
+          leaderName: 'คุณสมชาย ใจดี',
+          coordinatorNote: null,
+          meetingPlace: 'บ้านคุณป้าสมหวัง ต.หนองกุง อ.เมืองกาฬสินธุ์',
+          members: [
+            { id: 'm5', name: 'คุณป้าสมหวัง มีสุข', phone: '081-000-2201 (DEMO)', status: 'present', consecutiveAbsent: 0 },
+            { id: 'm6', name: 'คุณมานพ ยอดดี', phone: '081-000-2202 (DEMO)', status: 'present', consecutiveAbsent: 0 }
+          ]
+        },
+        {
+          id: 'grp-3',
+          name: 'กลุ่มบ้านห้วยสีทน — ผู้ประสานงานแทนหัวหน้า (DEMO)',
+          bodyId: 'body-north',
+          bodyName: 'บอดี้ กาฬสินธุ์เหนือ',
+          hasSupervisor: true,
+          supervisorName: 'คุณมาลี รักสุข (หัวหน้าแคร์)',
+          leaderUserId: 'usr-somchai',
+          leaderName: 'คุณสมชาย (ผู้ประสานงานส่งรายงานแทนหัวหน้า)',
+          coordinatorNote: 'ได้รับมอบหมายแบบ Coordinator ให้กรอกและส่งรายงานแทนหัวหน้ากลุ่ม',
+          meetingPlace: 'ศาลาชุมชนบ้านห้วยสีทน อ.เมืองกาฬสินธุ์',
+          members: [
+            { id: 'm7', name: 'คุณแม่ลำดวน แก้วใส', phone: '081-000-3301 (DEMO)', status: 'present', consecutiveAbsent: 0 },
+            { id: 'm8', name: 'คุณเอกชัย พิมพ์ดี', phone: '081-000-3302 (DEMO)', status: 'leave', consecutiveAbsent: 0 }
+          ]
+        },
+        {
+          id: 'grp-4',
+          name: 'กลุ่มบ้านบึงวิชัย — ส่งโดยหัวหน้าบอดี้ (ทดสอบห้ามอนุมัติตัวเอง)',
+          bodyId: 'body-north',
+          bodyName: 'บอดี้ กาฬสินธุ์เหนือ',
+          hasSupervisor: false,
+          supervisorName: 'ไม่มี Supervisor (ส่งตรงหัวหน้าบอดี้)',
+          leaderUserId: 'usr-prayut',
+          leaderName: 'อ.ประยุทธ พันธกิจ (ผู้ส่ง = หัวหน้าบอดี้)',
+          coordinatorNote: null,
+          meetingPlace: 'บ้านบึงวิชัย อ.เมืองกาฬสินธุ์',
+          members: [
+            { id: 'm9', name: 'คุณสุชาติ ใจมั่น', phone: '081-000-4401 (DEMO)', status: 'present', consecutiveAbsent: 0 }
+          ]
+        },
+        {
+          id: 'grp-5',
+          name: 'กลุ่มบ้านยางตลาด — บอดี้ไร้หัวหน้าบอดี้ (DEMO)',
+          bodyId: 'body-south',
+          bodyName: 'บอดี้ กาฬสินธุ์ใต้',
+          hasSupervisor: false,
+          supervisorName: 'ไม่มี Supervisor',
+          leaderUserId: 'usr-somchai',
+          leaderName: 'คุณสมชาย ใจดี',
+          coordinatorNote: null,
+          meetingPlace: 'ตลาดยางตลาด จ.กาฬสินธุ์',
+          members: [
+            { id: 'm10', name: 'คุณพรทิพย์ สายชล', phone: '081-000-5501 (DEMO)', status: 'present', consecutiveAbsent: 0 }
+          ]
+        }
+      ],
+
+      reports: {
+        'grp-1': {
+          id: 'rep-1',
+          groupId: 'grp-1',
+          status: 'draft', // draft | submitted | under_review | needs_revision | approved
+          isBlocked: false,
+          blockedReason: null,
+          requiresSupervisorReview: true,
+          supervisorReviewedAt: null,
+          submittedByUserId: null,
+          submittedByName: null,
+          firstSubmittedAt: null,
+          isLate: false,
+          revisionReason: null,
+          approvedAt: null,
+          approvedByName: null,
+          meetingHeld: true,
+          notHeldReason: '',
+          meetingDate: '2026-11-14',
+          topic: 'ความรักของพระเจ้าในครอบครัว',
+          scripture: '1 ยอห์น 4:7–12',
+          activities: { prayer: true, fellowship: true, visitation: false },
+          atmosphere: 'อบอุ่น สมาชิกหนุนใจกันดี',
+          followupNeeds: 'เยี่ยมคุณลุงบุญมีที่ขาด 2 สัปดาห์ติด',
+          nextWeekPlan: 'อธิษฐานเผื่อครอบครัวใหม่ในซอย 3',
+          visitors: [
+            { id: 'v1', name: 'คุณแก้วตา (ผู้มาใหม่ DEMO)', consent: true, phone: '089-111-2222 (DEMO)', isReturning: false }
+          ],
+          newVisitorInput: { name: '', consent: false, phone: '' }
+        },
+        'grp-2': {
+          id: 'rep-2',
+          groupId: 'grp-2',
+          status: 'submitted',
+          isBlocked: false,
+          blockedReason: null,
+          requiresSupervisorReview: false, // No Supervisor -> Fallback directly to Body Leader (CD-03)
+          supervisorReviewedAt: null,
+          submittedByUserId: 'usr-somchai',
+          submittedByName: 'คุณสมชาย ใจดี',
+          firstSubmittedAt: '2026-11-14 17:20 น.',
+          isLate: false,
+          revisionReason: null,
+          approvedAt: null,
+          approvedByName: null,
+          meetingHeld: true,
+          notHeldReason: '',
+          meetingDate: '2026-11-14',
+          topic: 'การอธิษฐานประจำวัน',
+          scripture: 'ฟีลิปปี 4:6–7',
+          activities: { prayer: true, fellowship: true, visitation: true },
+          atmosphere: 'คึกคัก มีความหวังใจ',
+          followupNeeds: 'ไม่มี',
+          nextWeekPlan: 'เชิญเพื่อนบ้านร่วมสามัคคีธรรม',
+          visitors: [],
+          newVisitorInput: { name: '', consent: false, phone: '' }
+        },
+        'grp-3': {
+          id: 'rep-3',
+          groupId: 'grp-3',
+          status: 'needs_revision',
+          isBlocked: false,
+          blockedReason: null,
+          requiresSupervisorReview: true,
+          supervisorReviewedAt: null,
+          submittedByUserId: 'usr-somchai',
+          submittedByName: 'คุณสมชาย (ผู้ประสานงาน)',
+          firstSubmittedAt: '2026-11-14 16:10 น.',
+          isLate: false,
+          revisionReason: 'กรุณาระบุหัวข้อบทเรียนและแผนสัปดาห์หน้าเพิ่มเติมครับ',
+          approvedAt: null,
+          approvedByName: null,
+          meetingHeld: true,
+          notHeldReason: '',
+          meetingDate: '2026-11-14',
+          topic: '',
+          scripture: 'สดุดี 23',
+          activities: { prayer: true, fellowship: false, visitation: false },
+          atmosphere: 'สงบ',
+          followupNeeds: 'ส่งคำอธิษฐานเผื่อคุณแม่ลำดวน',
+          nextWeekPlan: '',
+          visitors: [],
+          newVisitorInput: { name: '', consent: false, phone: '' }
+        },
+        'grp-4': {
+          id: 'rep-4',
+          groupId: 'grp-4',
+          status: 'submitted',
+          isBlocked: true,
+          blockedReason: 'self_approval_forbidden_no_co_body_leader',
+          requiresSupervisorReview: false,
+          supervisorReviewedAt: null,
+          submittedByUserId: 'usr-prayut', // Same as sole Body Leader!
+          submittedByName: 'อ.ประยุทธ พันธกิจ',
+          firstSubmittedAt: '2026-11-14 18:05 น.',
+          isLate: false,
+          revisionReason: null,
+          approvedAt: null,
+          approvedByName: null,
+          meetingHeld: true,
+          notHeldReason: '',
+          meetingDate: '2026-11-14',
+          topic: 'ความเป็นน้ำหนึ่งใจเดียวกัน',
+          scripture: 'เอเฟซัส 4:3',
+          activities: { prayer: true, fellowship: true, visitation: false },
+          atmosphere: 'ดีมาก',
+          followupNeeds: 'ไม่มี',
+          nextWeekPlan: 'เยี่ยมบ้านสมาชิกใหม่',
+          visitors: [],
+          newVisitorInput: { name: '', consent: false, phone: '' }
+        },
+        'grp-5': {
+          id: 'rep-5',
+          groupId: 'grp-5',
+          status: 'submitted',
+          isBlocked: true,
+          blockedReason: 'no_usable_body_leader',
+          requiresSupervisorReview: false,
+          supervisorReviewedAt: null,
+          submittedByUserId: 'usr-somchai',
+          submittedByName: 'คุณสมชาย ใจดี',
+          firstSubmittedAt: '2026-11-14 18:15 น.',
+          isLate: false,
+          revisionReason: null,
+          approvedAt: null,
+          approvedByName: null,
+          meetingHeld: true,
+          notHeldReason: '',
+          meetingDate: '2026-11-14',
+          topic: 'พระคำนำชีวิต',
+          scripture: 'สดุดี 119:105',
+          activities: { prayer: true, fellowship: true, visitation: false },
+          atmosphere: 'อบอุ่น',
+          followupNeeds: 'รอตั้งหัวหน้าบอดี้กาฬสินธุ์ใต้',
+          nextWeekPlan: 'รวมอธิษฐานวันพุธ',
+          visitors: [],
+          newVisitorInput: { name: '', consent: false, phone: '' }
+        }
+      },
+
+      assignments: [
+        { id: 'asg-1', bodyId: 'body-north', groupName: 'กลุ่มบ้านโนนทัน', person: 'คุณสมชาย ใจดี', responsibility: 'group_leader', status: 'active', since: '2026-01-01' },
+        { id: 'asg-2', bodyId: 'body-north', groupName: 'กลุ่มบ้านโนนทัน', person: 'คุณมาลี รักสุข', responsibility: 'care_leader', status: 'active', since: '2026-01-01' },
+        { id: 'asg-3', bodyId: 'body-north', groupName: 'กลุ่มบ้านห้วยสีทน', person: 'คุณสมชาย ใจดี', responsibility: 'coordinator', status: 'active', since: '2026-06-01' },
+        { id: 'asg-4', bodyId: 'body-north', groupName: 'บอดี้ กาฬสินธุ์เหนือ', person: 'อ.ประยุทธ พันธกิจ', responsibility: 'body_leader', status: 'active', since: '2026-01-01' }
+      ],
+
+      notifications: [
+        { id: 'n1', roles: ['leader'], unread: true, channel: 'In-App + LINE OA', time: 'วันนี้ 16:30 น.', title: 'ขอให้แก้ไขรายงาน: กลุ่มบ้านห้วยสีทน', body: 'หัวหน้าแคร์ขอให้ระบุหัวข้อบทเรียนและแผนสัปดาห์หน้าเพิ่มเติม (กดเพื่อแก้ไขและส่งใหม่)' },
+        { id: 'n2', roles: ['supervisor'], unread: true, channel: 'In-App + LINE OA', time: 'วันนี้ 17:00 น.', title: 'เตือนรอบรายงานวันอาทิตย์ 20:00 น.', body: 'ยังมี 1 กลุ่มในความดูแลของคุณที่ยังไม่ได้ส่งรายงานประจำสัปดาห์ (กลุ่มบ้านโนนทัน)' },
+        { id: 'n3', roles: ['body_leader'], unread: true, channel: 'In-App + LINE OA', time: 'วันนี้ 17:20 น.', title: 'รออนุมัติ (ไม่มี Supervisor): กลุ่มบ้านหนองกุง', body: 'กลุ่มบ้านหนองกุงส่งรายงานแล้ว และส่งตรงมาที่หัวหน้าบอดี้ตามกติกา Fallback (CD-03)' },
+        { id: 'n4', roles: ['admin', 'body_leader'], unread: true, channel: 'In-App + LINE OA', time: 'วันนี้ 18:15 น.', title: 'แจ้งเตือนเร่งด่วน: รายงานติดขัด (Blocked)', body: 'กลุ่มบ้านบึงวิชัย (ผู้ส่งเป็นหัวหน้าบอดี้คนเดียว) และกลุ่มบ้านยางตลาด (บอดี้ไม่มีหัวหน้าบอดี้) ไม่สามารถอนุมัติได้ — ต้องให้ Admin จัดการ' },
+        { id: 'n5', roles: ['pastor'], unread: false, channel: 'In-App', time: 'อาทิตย์ที่แล้ว 20:30 น.', title: 'สรุปประชุมวันอาทิตย์ 20:30 น. พร้อมอ่านแล้ว', body: 'บันทึก Snapshot รอบสัปดาห์ 2026-W45 ครบ 10 หมวดเรียบร้อย (ข้อมูลอดีตไม่เปลี่ยนแปลง)' }
+      ],
+
+      auditLogs: [
+        { time: '18:15:10', actor: 'System Workflow', action: 'REPORT_BLOCKED', detail: 'กลุ่มบ้านยางตลาด: ไม่มีหัวหน้าบอดี้ที่มีบัญชีใช้งานได้ (CD-07)' },
+        { time: '18:05:02', actor: 'System Workflow', action: 'REPORT_BLOCKED', detail: 'กลุ่มบ้านบึงวิชัย: ห้ามอนุมัติรายงานตนเองและไม่มีหัวหน้าบอดี้อีกคน (DEC-05)' },
+        { time: '17:20:44', actor: 'คุณสมชาย ใจดี', action: 'REPORT_SUBMITTED', detail: 'กลุ่มบ้านหนองกุง -> Fallback ถึงหัวหน้าบอดี้โดยตรง (CD-03)' },
+        { time: '16:18:00', actor: 'คุณมาลี รักสุข', action: 'REVISION_REQUESTED', detail: 'กลุ่มบ้านห้วยสีทน: ขอให้ระบุหัวข้อบทเรียนและแผนสัปดาห์หน้า' }
+      ],
+
+      meetingBrief: {
+        periodCode: '2026-W46 (จันทร์ 9 – อาทิตย์ 15 พ.ย. 2026)',
+        generatedAt: 'วันอาทิตย์ 20:30 น. (Asia/Bangkok) · Immutable Snapshot (DEMO)',
+        snapshotExpected: 5,
+        lateSubmissionsAfterBrief: 0
+      }
+    });
+
+    let state = INITIAL_STATE();
+
+    // =========================================================================
+    // HELPER FUNCTIONS
+    // =========================================================================
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.display = 'block';
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3400);
+    }
+
+    function addAudit(actor, action, detail) {
+      const now = new Date();
+      const t = now.toTimeString().slice(0, 8);
+      state.auditLogs.unshift({ time: t, actor, action, detail });
+    }
+
+    function addNotification(roles, title, body) {
+      state.notifications.unshift({
+        id: 'n-' + Date.now(),
+        roles,
+        unread: true,
+        channel: 'In-App + LINE OA (DEMO)',
+        time: 'เมื่อสักครู่',
+        title,
+        body
+      });
+    }
+
+    function statusBadge(rep) {
+      if (rep.isBlocked) return `<span class="status-chip st-err">ติดขัด (Blocked)</span>`;
+      switch (rep.status) {
+        case 'draft': return `<span class="status-chip st-warn">ฉบับร่าง (ยังไม่ส่ง)</span>`;
+        case 'submitted': return `<span class="status-chip st-info">ส่งแล้ว · รอตรวจ</span>`;
+        case 'under_review': return `<span class="status-chip st-info">กำลังตรวจสอบ</span>`;
+        case 'needs_revision': return `<span class="status-chip st-warn">ส่งกลับแก้ไข</span>`;
+        case 'approved': return `<span class="status-chip st-ok">อนุมัติแล้ว</span>`;
+        default: return `<span class="status-chip st-neutral">ยังไม่ส่งรายงาน</span>`;
+      }
+    }
+
+    // =========================================================================
+    // NAVIGATION & ROLE SWITCHING
+    // =========================================================================
+    const NAV_CONFIG = {
+      auth: [
+        { id: 'auth', label: 'เข้าสู่ระบบ (Auth)' }
+      ],
+      leader: [
+        { id: 'report', label: 'ส่งรายงานสัปดาห์' },
+        { id: 'my_groups', label: 'กลุ่มของฉัน & สมาชิก' },
+        { id: 'inbox', label: 'แจ้งเตือน' }
+      ],
+      supervisor: [
+        { id: 'review', label: 'รอตรวจรายงาน' },
+        { id: 'sup_groups', label: 'กลุ่มที่ดูแล' },
+        { id: 'inbox', label: 'แจ้งเตือน' }
+      ],
+      body_leader: [
+        { id: 'bl_overview', label: 'ภาพรวม & อนุมัติ' },
+        { id: 'bl_assignments', label: 'จัดการผู้รับผิดชอบ' },
+        { id: 'inbox', label: 'แจ้งเตือน' }
+      ],
+      pastor: [
+        { id: 'pastor_dash', label: 'ภาพรวมคริสตจักร' },
+        { id: 'meeting_brief', label: 'สรุปประชุม 20:30 น.' },
+        { id: 'inbox', label: 'แจ้งเตือน' }
+      ],
+      admin: [
+        { id: 'admin_panel', label: 'ศูนย์จัดการระบบ' },
+        { id: 'admin_audit', label: 'บันทึกตรวจสอบ (Audit)' },
+        { id: 'inbox', label: 'แจ้งเตือน' }
+      ]
+    };
+
+    function switchRole(role) {
+      state.role = role;
+      state.uiState = 'normal';
+      state.submitSuccess = false;
+      state.revisionTargetId = null;
+      state.tab = NAV_CONFIG[role][0].id;
+      document.getElementById('roleSelect').value = role;
+
+      // Default sensible viewport per role (user can still override anytime)
+      if (role === 'leader' || role === 'auth') setViewport('mobile');
+      else setViewport('desktop');
+
+      render();
+    }
+
+    function setTab(tabId) {
+      state.tab = tabId;
+      state.uiState = 'normal';
+      render();
+    }
+
+    function setViewport(mode) {
+      state.viewport = mode;
+      const frame = document.getElementById('appFrame');
+      const mBtn = document.getElementById('vpMobile');
+      const dBtn = document.getElementById('vpDesktop');
+      if (mode === 'mobile') {
+        frame.classList.add('mobile-mode');
+        mBtn.classList.add('active');
+        dBtn.classList.remove('active');
+      } else {
+        frame.classList.remove('mobile-mode');
+        dBtn.classList.add('active');
+        mBtn.classList.remove('active');
+      }
+    }
+
+    function openInbox() {
+      if (state.role === 'auth') {
+        showToast('กรุณาเข้าสู่ระบบก่อนเปิดกล่องแจ้งเตือน');
+        return;
+      }
+      state.tab = 'inbox';
+      render();
+    }
+
+    function resetDemo() {
+      const vp = state.viewport;
+      state = INITIAL_STATE();
+      setViewport(vp);
+      document.getElementById('roleSelect').value = state.role;
+      showToast('รีเซ็ตข้อมูล DEMO ทั้งหมดเรียบร้อยแล้ว');
+      render();
+    }
+
+    // =========================================================================
+    // STATE RENDER HELPER (Normal / Loading / Empty / Error)
+    // =========================================================================
+    function renderUiStateStrip() {
+      return `
+        <div class="state-strip" aria-label="ทดสอบสถานะหน้าจอ">
+          <span style="font-weight:700;">ทดสอบ State:</span>
+          <button class="mini-chip ${state.uiState==='normal'?'active':''}" onclick="state.uiState='normal';render()">ปกติ (Normal)</button>
+          <button class="mini-chip ${state.uiState==='loading'?'active':''}" onclick="state.uiState='loading';render()">กำลังโหลด (Loading)</button>
+          <button class="mini-chip ${state.uiState==='empty'?'active':''}" onclick="state.uiState='empty';render()">ไม่มีข้อมูล (Empty)</button>
+          <button class="mini-chip ${state.uiState==='error'?'active':''}" onclick="state.uiState='error';render()">ผิดพลาด (Error)</button>
+        </div>
+      `;
+    }
+
+    function renderNonNormalState(contextTitle) {
+      if (state.uiState === 'loading') {
+        return `
+          <div class="card">
+            <h2 class="h2" style="margin-bottom:12px;">กำลังโหลดข้อมูล${contextTitle}...</h2>
+            <div class="skeleton" style="width:70%;"></div>
+            <div class="skeleton" style="width:95%;"></div>
+            <div class="skeleton" style="width:85%;"></div>
+            <div class="skeleton" style="width:60%;"></div>
+          </div>
+        `;
+      }
+      if (state.uiState === 'empty') {
+        return `
+          <div class="card" style="text-align:center; padding:32px 16px;">
+            <div style="font-size:2rem; margin-bottom:8px;">📭</div>
+            <h2 class="h2">ยังไม่มีรายการใน${contextTitle}</h2>
+            <p class="muted">เมื่อมีรายงานหรือข้อมูลใหม่ในรอบสัปดาห์นี้ ระบบจะแสดงที่นี่ทันที</p>
+            <button class="btn btn-secondary" onclick="state.uiState='normal';render()">กลับสู่ข้อมูลปกติ (DEMO)</button>
+          </div>
+        `;
+      }
+      if (state.uiState === 'error') {
+        return `
+          <div class="banner banner-err">
+            <strong>ไม่สามารถเชื่อมต่อข้อมูล${contextTitle}ได้ชั่วคราว (จำลอง Error State)</strong>
+            <span>ข้อมูลฉบับร่างในเครื่องของคุณยังคงปลอดภัย ไม่สูญหาย กรุณาลองใหม่อีกครั้ง</span>
+            <div style="margin-top:8px;">
+              <button class="btn btn-primary" onclick="state.uiState='normal';render()">ลองโหลดใหม่อีกครั้ง</button>
+            </div>
+          </div>
+        `;
+      }
+      return null;
+    }
+
+    // =========================================================================
+    // SCREEN A: AUTHENTICATION
+    // =========================================================================
+    function renderAuth() {
+      const m = state.authMode;
+      return `
+        <div class="state-strip" aria-label="สถานะ Auth">
+          <span style="font-weight:700;">ทดลองหน้า Auth:</span>
+          <button class="mini-chip ${m==='line'?'active':''}" onclick="state.authMode='line';render()">LINE Login (หลัก)</button>
+          <button class="mini-chip ${m==='liff'?'active':''}" onclick="state.authMode='liff';render()">LINE LIFF Entry</button>
+          <button class="mini-chip ${m==='password'?'active':''}" onclick="state.authMode='password';render()">Password / Passkey</button>
+          <button class="mini-chip ${m==='error'?'active':''}" onclick="state.authMode='error';render()">Login Error</button>
+          <button class="mini-chip ${m==='expired'?'active':''}" onclick="state.authMode='expired';render()">Session Expired</button>
+        </div>
+
+        <div class="card" style="max-width:440px; margin:8px auto; width:100%;">
+          <div style="text-align:center; margin-bottom:16px;">
+            <div class="logo-mark" style="width:56px;height:56px;margin:0 auto 10px;font-size:1.35rem;">FM</div>
+            <h1 class="h1">ยินดีต้อนรับสู่ FaithMap</h1>
+            <p class="muted">ระบบบริหารพันธกิจคริสตจักรและรายงานพันธกิจบ้าน · กาฬสินธุ์ (DEMO)</p>
+          </div>
+
+          ${m === 'error' ? `
+            <div class="banner banner-err" style="margin-bottom:14px;">
+              <strong>ไม่สามารถเข้าสู่ระบบด้วย LINE ได้</strong>
+              <span>บัญชี LINE นี้ยังไม่เชื่อมโยงกับสมาชิกในระบบ กรุณาติดต่อ Admin หรือหัวหน้าบอดี้ของคุณ</span>
+            </div>
+          ` : ''}
+
+          ${m === 'expired' ? `
+            <div class="banner banner-warn" style="margin-bottom:14px;">
+              <strong>เซสชันหมดอายุเพื่อความปลอดภัย</strong>
+              <span>กรุณาเข้าสู่ระบบใหม่อีกครั้ง (ฉบับร่างที่บันทึกไว้ยังอยู่ครบถ้วน)</span>
+            </div>
+          ` : ''}
+
+          ${m === 'liff' ? `
+            <div class="banner banner-info" style="margin-bottom:14px;">
+              <strong>โหมด LINE LIFF (เปิดจากห้องแชท FaithMap OA)</strong>
+              <span>ระบบตรวจยืนยัน LINE ID Token บนเซิร์ฟเวอร์อัตโนมัติ (DEMO) — เข้าสู่หน้าส่งรายงานทันที</span>
+            </div>
+            <button class="btn btn-line btn-full" onclick="switchRole('leader');showToast('เข้าสู่ระบบผ่าน LINE LIFF สำเร็จ (DEMO)')">
+              ดำเนินการต่อในฐานะ คุณสมชาย ใจดี
+            </button>
+          ` : ''}
+
+          ${(m === 'line' || m === 'error' || m === 'expired') ? `
+            <button class="btn btn-line btn-full" onclick="switchRole('leader');showToast('เข้าสู่ระบบด้วย LINE Login สำเร็จ (DEMO)')">
+              เข้าสู่ระบบด้วย LINE (แนะนำสำหรับผู้สูงอายุ)
+            </button>
+            <p class="muted" style="text-align:center; margin:10px 0;">กดปุ่มเดียว ไม่ต้องจำรหัสผ่านหรือ PIN</p>
+            <hr style="border:none; border-top:1px solid var(--border-hairline); margin:14px 0;">
+            <button class="btn btn-secondary btn-full" onclick="state.authMode='password';render()">
+              เข้าสู่ระบบด้วยรหัสผ่าน / Passkey (สำหรับผู้ดูแล &amp; Desktop)
+            </button>
+          ` : ''}
+
+          ${m === 'password' ? `
+            <div class="field">
+              <label for="authEmail">อีเมล หรือ เบอร์โทรศัพท์ (+66)</label>
+              <input id="authEmail" class="input" value="prayut@faithmap-demo.org" />
+            </div>
+            <div class="field">
+              <label for="authPass">รหัสผ่าน (ไม่มีระบบ PIN แบบเดิม)</label>
+              <input id="authPass" type="password" class="input" value="••••••••••••" />
+            </div>
+            <div class="grid-2" style="margin-top:8px;">
+              <button class="btn btn-primary" onclick="switchRole('body_leader');showToast('เข้าสู่ระบบด้วยรหัสผ่านสำเร็จ (DEMO)')">เข้าสู่ระบบ</button>
+              <button class="btn btn-secondary" onclick="switchRole('admin');showToast('ยืนยัน Passkey (WebAuthn) สำเร็จ (DEMO)')">ใช้ Passkey</button>
+            </div>
+            <button class="btn btn-secondary btn-full" style="margin-top:10px;" onclick="state.authMode='line';render()">
+              กลับไปใช้ LINE Login
+            </button>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // SCREEN B: MISSION / GROUP LEADER — 3-STEP MOBILE REPORT
+    // =========================================================================
+    function renderLeaderReport() {
+      const nonNormal = renderNonNormalState('ส่งรายงานสัปดาห์');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+
+      const grp = state.groups.find(g => g.id === state.selectedGroupId) || state.groups[0];
+      const rep = state.reports[grp.id];
+
+      // If already submitted or approved (and not needs_revision), show tracking card
+      if ((rep.status === 'submitted' || rep.status === 'under_review' || rep.status === 'approved') || state.submitSuccess) {
+        return `
+          ${renderUiStateStrip()}
+          ${renderGroupSelectorCard(grp)}
+          <div class="card">
+            <div class="banner banner-ok" style="margin-bottom:14px;">
+              <strong>${rep.status === 'approved' ? 'รายงานได้รับการอนุมัติครบถ้วนแล้ว' : 'ส่งรายงานประจำสัปดาห์เรียบร้อยแล้ว!'}</strong>
+              <span>กลุ่ม: ${grp.name} · ส่งครั้งแรก: ${rep.firstSubmittedAt || 'วันนี้ 19:15 น.'} ${rep.isLate ? '· (บันทึกว่าส่งหลัง 20:00 น.)' : ''}</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div><strong>สถานะปัจจุบัน:</strong> ${statusBadge(rep)}</div>
+              <div><strong>เส้นทางการตรวจ:</strong> ${rep.requiresSupervisorReview ? 'ผู้รับผิดชอบกลุ่ม → หัวหน้าแคร์ (Supervisor) → หัวหน้าบอดี้' : 'ไม่มี Supervisor → ส่งตรงหัวหน้าบอดี้ (Fallback CD-03)'}</div>
+              ${rep.isBlocked ? `<div class="banner banner-err"><strong>สถานะ Blocked:</strong> บอดี้นี้ยังไม่มีผู้อนุมัติที่ใช้งานได้ ระบบแจ้งเตือน Admin แล้ว</div>` : ''}
+            </div>
+            <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-secondary" onclick="state.submitSuccess=false; state.reports['${grp.id}'].status='draft'; state.reportStep=1; render()">จำลองแก้ไขรอบใหม่ (DEMO)</button>
+            </div>
+          </div>
+        `;
+      }
+
+      const presentCount = grp.members.filter(m => m.status === 'present' || m.status === 'online').length;
+      const visitorCount = rep.visitors.length;
+      const totalAtt = rep.meetingHeld ? (presentCount + visitorCount) : 0;
+
+      return `
+        ${renderUiStateStrip()}
+        ${renderGroupSelectorCard(grp)}
+
+        ${rep.status === 'needs_revision' ? `
+          <div class="banner banner-warn">
+            <strong>ถูกส่งกลับให้แก้ไขโดยผู้ตรวจ</strong>
+            <span>เหตุผล: "${rep.revisionReason}"</span>
+          </div>
+        ` : ''}
+
+        <!-- Autosave & Deadline Bar -->
+        <div class="card" style="padding:12px 14px; background:var(--bg-teal-soft); border-color:#B5D6D4;">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center;">
+            <div>
+              <div style="font-weight:700; color:var(--brand-primary);">${state.autosaveText}</div>
+              <div class="muted" style="font-size:0.82rem;">กำหนดส่ง: วันอาทิตย์ 20:00 น. (Asia/Bangkok) · Autosave ไม่ส่งรายงานอัตโนมัติ</div>
+            </div>
+            <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:600; cursor:pointer;">
+              <input type="checkbox" ${state.pastDeadlineTest ? 'checked' : ''} onchange="state.pastDeadlineTest=this.checked;render()">
+              จำลองเวลาหลัง 20:00 น. (ส่งช้า)
+            </label>
+          </div>
+        </div>
+
+        ${state.pastDeadlineTest ? `
+          <div class="banner banner-warn">
+            <strong>เลยกำหนดวันอาทิตย์ 20:00 น. แล้ว</strong>
+            <span>คุณยังสามารถส่งรายงานได้ แต่ระบบจะบันทึกเวลาส่งครั้งแรกเป็น "ส่งช้า (Late)" ถาวร</span>
+          </div>
+        ` : ''}
+
+        <!-- Stepper -->
+        <div class="stepper" aria-label="ขั้นตอนส่งรายงาน">
+          <div class="step-item ${state.reportStep===1?'active':(state.reportStep>1?'done':'')}">1. การเข้าร่วม</div>
+          <div class="step-item ${state.reportStep===2?'active':(state.reportStep>2?'done':'')}">2. กิจกรรมพันธกิจ</div>
+          <div class="step-item ${state.reportStep===3?'active':''}">3. ตรวจสอบและส่ง</div>
+        </div>
+
+        ${state.validationErrors.length ? `
+          <div class="banner banner-err" role="alert">
+            <strong>กรุณาตรวจสอบข้อมูลก่อนดำเนินการต่อ:</strong>
+            <ul style="margin:4px 0 0 18px; padding:0;">
+              ${state.validationErrors.map(e => `<li>${e}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+
+        ${state.reportStep === 1 ? renderStep1(grp, rep, presentCount, visitorCount, totalAtt) : ''}
+        ${state.reportStep === 2 ? renderStep2(grp, rep) : ''}
+        ${state.reportStep === 3 ? renderStep3(grp, rep, presentCount, visitorCount, totalAtt) : ''}
+      `;
+    }
+
+    function renderGroupSelectorCard(grp) {
+      return `
+        <div class="card" style="padding:12px 14px;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="grpSelect">เลือกกลุ่มพันธกิจบ้าน (DEMO หลายโครงสร้าง):</label>
+            <select id="grpSelect" class="select" onchange="selectLeaderGroup(this.value)">
+              ${state.groups.filter(g => g.id !== 'grp-4').map(g => `
+                <option value="${g.id}" ${g.id===grp.id?'selected':''}>${g.name}</option>
+              `).join('')}
+            </select>
+          </div>
+          <div class="muted" style="margin-top:6px;">
+            ผู้ดูแล: ${grp.supervisorName} ${grp.coordinatorNote ? `· <strong>${grp.coordinatorNote}</strong>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function selectLeaderGroup(gid) {
+      state.selectedGroupId = gid;
+      state.reportStep = 1;
+      state.validationErrors = [];
+      state.submitSuccess = false;
+      render();
+    }
+
+    function triggerAutosave(msg) {
+      const now = new Date();
+      const hm = now.toTimeString().slice(0, 5);
+      state.autosaveText = `บันทึกฉบับร่างอัตโนมัติแล้ว เวลา ${hm} น. (ยังไม่ส่งรายงาน)` + (msg ? ` · ${msg}` : '');
+    }
+
+    function renderStep1(grp, rep, presentCount, visitorCount, totalAtt) {
+      return `
+        <div class="card">
+          <h1 class="h1" style="margin-bottom:10px;">ขั้นที่ 1: รายงานการเข้าร่วม</h1>
+          <div class="grid-2" style="margin-bottom:14px;">
+            <button class="btn ${rep.meetingHeld ? 'btn-primary' : 'btn-secondary'}" onclick="setMeetingHeld(true)">
+              มีการประชุมสัปดาห์นี้
+            </button>
+            <button class="btn ${!rep.meetingHeld ? 'btn-warn' : 'btn-secondary'}" onclick="setMeetingHeld(false)">
+              ไม่ได้ประชุมสัปดาห์นี้ (งด/เลื่อน)
+            </button>
+          </div>
+
+          ${!rep.meetingHeld ? `
+            <div class="field">
+              <label for="notHeldReason">เหตุผลที่งดประชุม (จำเป็น)</label>
+              <input id="notHeldReason" class="input" placeholder="เช่น สมาชิกติดภารกิจงานแต่ง / เลื่อนไปสัปดาห์หน้า"
+                value="${rep.notHeldReason}" oninput="state.reports['${grp.id}'].notHeldReason=this.value; triggerAutosave();" />
+            </div>
+            <div class="banner banner-info" style="margin-bottom:14px;">
+              <strong>ยืนยันการงดประชุม (Confirmed Not Held)</strong>
+              <span>เมื่อกดส่งรายงาน กลุ่มนี้จะถูกนับว่า "ส่งรายงานแล้ว (งดประชุม)" ไม่ใช่กลุ่มขาดส่ง</span>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="goStep(3)">ข้ามไปขั้นตอนตรวจสอบและส่ง →</button>
+          ` : `
+            <div class="grid-3" style="margin-bottom:14px;">
+              <div class="kpi-card"><div class="kpi-val">${totalAtt}</div><div class="kpi-label">ผู้เข้าร่วมทั้งหมด</div></div>
+              <div class="kpi-card"><div class="kpi-val">${presentCount}</div><div class="kpi-label">สมาชิกเดิม (มา/ออนไลน์)</div></div>
+              <div class="kpi-card"><div class="kpi-val">${visitorCount}</div><div class="kpi-label">ผู้มาใหม่</div></div>
+            </div>
+
+            <h2 class="h2" style="margin-bottom:8px;">รายชื่อสมาชิกในกลุ่ม (${grp.members.length} คน)</h2>
+            ${grp.members.map(m => `
+              <div class="att-row">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                  <div>
+                    <strong>${m.name}</strong>
+                    <div class="muted" style="font-size:0.82rem;">โทร: ${m.phone}</div>
+                  </div>
+                  ${m.consecutiveAbsent >= 2 ? `<span class="status-chip st-warn">ขาด ${m.consecutiveAbsent} สัปดาห์ติด (มีรายการติดตาม)</span>` : ''}
+                </div>
+                <div class="att-pills" role="group" aria-label="สถานะการเข้าร่วมของ ${m.name}">
+                  <button class="att-pill ${m.status==='present'?'sel-present':''}" onclick="setMemberAtt('${grp.id}','${m.id}','present')">มา</button>
+                  <button class="att-pill ${m.status==='absent'?'sel-absent':''}" onclick="setMemberAtt('${grp.id}','${m.id}','absent')">ขาด</button>
+                  <button class="att-pill ${m.status==='leave'?'sel-leave':''}" onclick="setMemberAtt('${grp.id}','${m.id}','leave')">ลา</button>
+                  <button class="att-pill ${m.status==='online'?'sel-online':''}" onclick="setMemberAtt('${grp.id}','${m.id}','online')">ออนไลน์</button>
+                </div>
+              </div>
+            `).join('')}
+
+            <hr style="border:none; border-top:1px solid var(--border-hairline); margin:16px 0;">
+            <h2 class="h2" style="margin-bottom:8px;">ผู้มาใหม่ (Visitors — PDPA Consent)</h2>
+            ${rep.visitors.map(v => `
+              <div class="att-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div>
+                  <strong>${v.name}</strong>
+                  <div class="muted" style="font-size:0.82rem;">${v.consent ? `โทร: ${v.phone} (ยินยอม PDPA แล้ว)` : 'ไม่เก็บเบอร์โทร (ไม่ได้ให้ความยินยอม)'}</div>
+                </div>
+                <button class="btn btn-secondary" style="min-height:44px;padding:6px 12px;" onclick="removeVisitor('${grp.id}','${v.id}')">ลบ</button>
+              </div>
+            `).join('')}
+
+            <div class="card" style="background:var(--bg-canvas); margin-top:8px;">
+              <div class="field">
+                <label for="visName">ชื่อผู้มาใหม่</label>
+                <input id="visName" class="input" placeholder="เช่น คุณสมหญิง (DEMO)" value="${rep.newVisitorInput.name}"
+                  oninput="state.reports['${grp.id}'].newVisitorInput.name=this.value" />
+              </div>
+              <label class="checkbox-card" style="margin-bottom:10px;">
+                <input type="checkbox" ${rep.newVisitorInput.consent ? 'checked' : ''}
+                  onchange="toggleVisitorConsent('${grp.id}', this.checked)" />
+                <span><strong>ผู้มาใหม่ยินยอมให้เก็บเบอร์โทรศัพท์เพื่อการติดตามเยี่ยมเยียน (PDPA)</strong><br><span class="muted">หากไม่ติ๊กยินยอม ระบบจะไม่ให้กรอกเบอร์โทรศัพท์ (กฎข้อ 12 / DEC-10)</span></span>
+              </label>
+              <div class="field">
+                <label for="visPhone">เบอร์โทรศัพท์ผู้มาใหม่</label>
+                <input id="visPhone" class="input" placeholder="${rep.newVisitorInput.consent ? '08X-XXX-XXXX (DEMO)' : 'กรุณาติ๊กยินยอม PDPA ด้านบนก่อน'}"
+                  ${!rep.newVisitorInput.consent ? 'disabled' : ''} value="${rep.newVisitorInput.phone}"
+                  oninput="state.reports['${grp.id}'].newVisitorInput.phone=this.value" />
+              </div>
+              <button class="btn btn-secondary btn-full" onclick="addVisitor('${grp.id}')">+ เพิ่มผู้มาใหม่</button>
+            </div>
+
+            <div style="margin-top:16px;">
+              <button class="btn btn-primary btn-full" onclick="goStep(2)">ดำเนินการต่อ (ขั้นที่ 2: กิจกรรม) →</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderStep2(grp, rep) {
+      return `
+        <div class="card">
+          <h1 class="h1" style="margin-bottom:10px;">ขั้นที่ 2: กิจกรรมพันธกิจ</h1>
+          <div class="field">
+            <label for="mDate">วันที่ประชุม</label>
+            <input id="mDate" type="date" class="input" value="${rep.meetingDate}"
+              onchange="state.reports['${grp.id}'].meetingDate=this.value; triggerAutosave(); render();" />
+          </div>
+          <div class="field">
+            <label for="mTopic">หัวข้อบทเรียน / การแบ่งปันพระคำ *</label>
+            <input id="mTopic" class="input" placeholder="ระบุหัวข้อที่แบ่งปันในกลุ่ม" value="${rep.topic}"
+              oninput="state.reports['${grp.id}'].topic=this.value; triggerAutosave();" />
+          </div>
+          <div class="field">
+            <label for="mScripture">ข้อพระคัมภีร์ (ไม่บังคับ)</label>
+            <input id="mScripture" class="input" placeholder="เช่น ยอห์น 3:16" value="${rep.scripture}"
+              oninput="state.reports['${grp.id}'].scripture=this.value; triggerAutosave();" />
+          </div>
+          <div class="field">
+            <label>กิจกรรมที่ดำเนินการ</label>
+            <div class="grid-3">
+              <label class="checkbox-card"><input type="checkbox" ${rep.activities.prayer?'checked':''} onchange="state.reports['${grp.id}'].activities.prayer=this.checked; triggerAutosave();"><span>อธิษฐานเผื่อกัน</span></label>
+              <label class="checkbox-card"><input type="checkbox" ${rep.activities.fellowship?'checked':''} onchange="state.reports['${grp.id}'].activities.fellowship=this.checked; triggerAutosave();"><span>สามัคคีธรรม</span></label>
+              <label class="checkbox-card"><input type="checkbox" ${rep.activities.visitation?'checked':''} onchange="state.reports['${grp.id}'].activities.visitation=this.checked; triggerAutosave();"><span>เยี่ยมเยียน</span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="mAtmos">บรรยากาศและผลลัพธ์</label>
+            <textarea id="mAtmos" class="textarea" oninput="state.reports['${grp.id}'].atmosphere=this.value; triggerAutosave();">${rep.atmosphere}</textarea>
+          </div>
+          <div class="field">
+            <label for="mFollow">สิ่งที่ต้องติดตาม / คำขออธิษฐาน</label>
+            <input id="mFollow" class="input" value="${rep.followupNeeds}" oninput="state.reports['${grp.id}'].followupNeeds=this.value; triggerAutosave();" />
+          </div>
+          <div class="field">
+            <label for="mNext">แผนพันธกิจสัปดาห์หน้า *</label>
+            <input id="mNext" class="input" placeholder="ระบุแผนสำหรับสัปดาห์ถัดไป" value="${rep.nextWeekPlan}"
+              oninput="state.reports['${grp.id}'].nextWeekPlan=this.value; triggerAutosave();" />
+          </div>
+
+          <div class="grid-2" style="margin-top:14px;">
+            <button class="btn btn-secondary" onclick="goStep(1)">← ย้อนกลับ</button>
+            <button class="btn btn-primary" onclick="goStep(3)">ดำเนินการต่อ (ตรวจสอบและส่ง) →</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderStep3(grp, rep, presentCount, visitorCount, totalAtt) {
+      return `
+        <div class="card">
+          <h1 class="h1" style="margin-bottom:10px;">ขั้นที่ 3: ตรวจสอบและยืนยันส่งรายงาน</h1>
+          <div class="card" style="background:var(--bg-canvas); margin-bottom:14px;">
+            <div><strong>กลุ่ม:</strong> ${grp.name}</div>
+            <div><strong>สถานที่:</strong> ${grp.meetingPlace}</div>
+            <div><strong>สถานะการประชุม:</strong> ${rep.meetingHeld ? 'มีการประชุม' : `ไม่ได้ประชุม (${rep.notHeldReason || '-'})`}</div>
+            ${rep.meetingHeld ? `
+              <div><strong>จำนวนผู้เข้าร่วม:</strong> ${totalAtt} คน (สมาชิกเดิม ${presentCount} + ผู้มาใหม่ ${visitorCount})</div>
+              <div><strong>หัวข้อบทเรียน:</strong> ${rep.topic || '<span style="color:#991B1B;">ยังไม่ได้กรอก</span>'}</div>
+              <div><strong>บรรยากาศ/ผลลัพธ์:</strong> ${rep.atmosphere || '-'}</div>
+              <div><strong>แผนสัปดาห์หน้า:</strong> ${rep.nextWeekPlan || '<span style="color:#991B1B;">ยังไม่ได้กรอก</span>'}</div>
+            ` : ''}
+            <div style="margin-top:8px;"><strong>ผู้ตรวจลำดับถัดไป:</strong> ${grp.hasSupervisor ? grp.supervisorName : 'ไม่มี Supervisor → ส่งตรงหัวหน้าบอดี้ (Fallback CD-03)'}</div>
+          </div>
+
+          <div class="grid-2">
+            <button class="btn btn-secondary" onclick="goStep(${rep.meetingHeld ? 2 : 1})">← ย้อนกลับแก้ไข</button>
+            <button class="btn btn-primary" onclick="submitReport('${grp.id}')">ยืนยันส่งรายงานประจำสัปดาห์</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function setMeetingHeld(held) {
+      const rep = state.reports[state.selectedGroupId];
+      rep.meetingHeld = held;
+      state.validationErrors = [];
+      triggerAutosave();
+      render();
+    }
+
+    function setMemberAtt(gid, mid, status) {
+      const grp = state.groups.find(g => g.id === gid);
+      const mem = grp.members.find(m => m.id === mid);
+      mem.status = status;
+      triggerAutosave();
+      render();
+    }
+
+    function toggleVisitorConsent(gid, checked) {
+      const rep = state.reports[gid];
+      rep.newVisitorInput.consent = checked;
+      if (!checked) rep.newVisitorInput.phone = '';
+      render();
+    }
+
+    function addVisitor(gid) {
+      const rep = state.reports[gid];
+      const inp = rep.newVisitorInput;
+      if (!inp.name.trim()) {
+        showToast('กรุณากรอกชื่อผู้มาใหม่ก่อนเพิ่ม');
+        return;
+      }
+      if (inp.phone.trim() && !inp.consent) {
+        showToast('ต้องติ๊กยินยอม PDPA ก่อนเก็บเบอร์โทรศัพท์ (DEC-10)');
+        return;
+      }
+      rep.visitors.push({
+        id: 'v-' + Date.now(),
+        name: inp.name.trim() + ' (DEMO)',
+        consent: inp.consent,
+        phone: inp.consent ? (inp.phone.trim() || 'ไม่ได้ระบุ') : '',
+        isReturning: false
+      });
+      rep.newVisitorInput = { name: '', consent: false, phone: '' };
+      triggerAutosave('เพิ่มผู้มาใหม่แล้ว');
+      render();
+    }
+
+    function removeVisitor(gid, vid) {
+      const rep = state.reports[gid];
+      rep.visitors = rep.visitors.filter(v => v.id !== vid);
+      triggerAutosave();
+      render();
+    }
+
+    function goStep(target) {
+      const grp = state.groups.find(g => g.id === state.selectedGroupId);
+      const rep = state.reports[grp.id];
+      state.validationErrors = [];
+
+      if (target === 3 && !rep.meetingHeld && !rep.notHeldReason.trim()) {
+        state.validationErrors.push('กรุณาระบุเหตุผลที่ไม่ได้ประชุมในสัปดาห์นี้');
+        render();
+        return;
+      }
+      if (target === 3 && rep.meetingHeld) {
+        if (!rep.topic.trim()) state.validationErrors.push('กรุณากรอกหัวข้อบทเรียน / การแบ่งปันพระคำ (ขั้นที่ 2)');
+        if (!rep.nextWeekPlan.trim()) state.validationErrors.push('กรุณากรอกแผนพันธกิจสัปดาห์หน้า (ขั้นที่ 2)');
+        if (state.validationErrors.length) {
+          state.reportStep = 2;
+          render();
+          return;
+        }
+      }
+      state.reportStep = target;
+      render();
+    }
+
+    function submitReport(gid) {
+      const grp = state.groups.find(g => g.id === gid);
+      const rep = state.reports[gid];
+      const body = state.bodies.find(b => b.id === grp.bodyId);
+      state.validationErrors = [];
+
+      if (rep.meetingHeld) {
+        if (!rep.topic.trim()) state.validationErrors.push('กรุณากรอกหัวข้อบทเรียน');
+        if (!rep.nextWeekPlan.trim()) state.validationErrors.push('กรุณากรอกแผนสัปดาห์หน้า');
+      } else if (!rep.notHeldReason.trim()) {
+        state.validationErrors.push('กรุณาระบุเหตุผลที่งดประชุม');
+      }
+      if (state.validationErrors.length) { render(); return; }
+
+      const actor = state.currentUserByRole.leader;
+      rep.status = 'submitted';
+      rep.submittedByUserId = actor.id;
+      rep.submittedByName = actor.name;
+      if (!rep.firstSubmittedAt) {
+        rep.firstSubmittedAt = state.pastDeadlineTest ? 'อาทิตย์ 20:18 น.' : 'อาทิตย์ 19:25 น.';
+        rep.isLate = state.pastDeadlineTest;
+      }
+      rep.requiresSupervisorReview = grp.hasSupervisor;
+      rep.supervisorReviewedAt = null;
+      rep.revisionReason = null;
+
+      // Evaluate Blocked on direct fallback if no usable non-conflicting Body Leader
+      if (!grp.hasSupervisor && !body.hasUsableBodyLeader) {
+        rep.isBlocked = true;
+        rep.blockedReason = 'no_usable_body_leader';
+        addNotification(['admin'], `รายงานติดขัด (Blocked): ${grp.name}`, 'บอดี้ยังไม่มีหัวหน้าบอดี้ที่มีบัญชีใช้งานได้ กรุณาตรวจสอบและกำหนดหัวหน้าบอดี้');
+      } else {
+        rep.isBlocked = false;
+        rep.blockedReason = null;
+      }
+
+      if (state.pastDeadlineTest) {
+        state.meetingBrief.lateSubmissionsAfterBrief += 1;
+      }
+
+      addAudit(actor.name, 'REPORT_SUBMITTED', `${grp.name} (${rep.isLate ? 'ส่งช้า' : 'ทันเวลา'})`);
+      addNotification(grp.hasSupervisor ? ['supervisor'] : ['body_leader'], `มีรายงานส่งใหม่: ${grp.name}`, `ผู้ส่ง: ${actor.name} · กรุณาตรวจสอบ`);
+      state.submitSuccess = true;
+      showToast('ส่งรายงานเรียบร้อยแล้ว!');
+      render();
+    }
+
+    function renderMyGroups() {
+      const nonNormal = renderNonNormalState('กลุ่มของฉัน');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+      return `
+        ${renderUiStateStrip()}
+        <div class="card">
+          <h1 class="h1" style="margin-bottom:10px;">กลุ่มพันธกิจบ้านที่รับผิดชอบ (DEMO)</h1>
+          ${state.groups.filter(g => g.id !== 'grp-4').map(g => `
+            <div class="att-row">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div>
+                  <strong>${g.name}</strong>
+                  <div class="muted">${g.meetingPlace} · สมาชิก ${g.members.length} คน</div>
+                  <div class="muted">${g.supervisorName}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  ${statusBadge(state.reports[g.id])}
+                  <button class="btn btn-primary" style="min-height:44px;" onclick="state.selectedGroupId='${g.id}'; state.reportStep=1; state.submitSuccess=false; setTab('report')">เปิดรายงาน</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // SCREEN C: SUPERVISOR REVIEW
+    // =========================================================================
+    function renderSupervisorReview() {
+      const nonNormal = renderNonNormalState('รายการตรวจรายงาน');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+
+      const supervisedGroups = state.groups.filter(g => g.hasSupervisor);
+      return `
+        ${renderUiStateStrip()}
+        <div class="banner banner-info">
+          <strong>หลักเกณฑ์การตรวจของ Supervisor (CD-01 &amp; DEC-04)</strong>
+          <span>กลุ่มที่ยังบันทึกเป็น "ฉบับร่าง (Draft)" จะแสดงเป็น "ยังไม่ส่งรายงาน" เพื่อรักษาความเป็นส่วนตัวจนกว่าผู้นำกลุ่มจะกดส่งจริง</span>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h1 class="h1">รายการรายงานที่ดูแล (${supervisedGroups.length} กลุ่ม)</h1>
+          </div>
+          ${supervisedGroups.map(g => {
+            const rep = state.reports[g.id];
+            // Draft isolation rule (CD-01)!
+            if (rep.status === 'draft') {
+              return `
+                <div class="att-row">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                      <strong>${g.name}</strong>
+                      <div class="muted">ผู้ส่ง: ${g.leaderName}</div>
+                    </div>
+                    <span class="status-chip st-neutral">ยังไม่ส่งรายงาน (Not Submitted)</span>
+                  </div>
+                </div>
+              `;
+            }
+            return `
+              <div class="att-row">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                  <div>
+                    <strong>${g.name}</strong>
+                    <div class="muted">ส่งโดย: ${rep.submittedByName} · ${rep.firstSubmittedAt || ''}</div>
+                  </div>
+                  ${statusBadge(rep)}
+                </div>
+                <div style="background:var(--bg-canvas); padding:10px 12px; border-radius:10px; margin-bottom:10px;">
+                  <div><strong>หัวข้อ:</strong> ${rep.topic || '(ไม่ได้ระบุ)'} · <strong>พระคัมภีร์:</strong> ${rep.scripture || '-'}</div>
+                  <div><strong>สมาชิกมา/ออนไลน์:</strong> ${g.members.filter(m=>m.status==='present'||m.status==='online').length} คน · <strong>ผู้มาใหม่:</strong> ${rep.visitors.length} คน</div>
+                  <div><strong>แผนสัปดาห์หน้า:</strong> ${rep.nextWeekPlan || '(ไม่ได้ระบุ)'}</div>
+                </div>
+                ${rep.supervisorReviewedAt ? `
+                  <div class="status-chip st-ok">รับรองการตรวจแล้ว (${rep.supervisorReviewedAt}) — รอหัวหน้าบอดี้อนุมัติ</div>
+                ` : rep.status === 'needs_revision' ? `
+                  <div class="status-chip st-warn">ส่งกลับแก้ไขแล้ว: "${rep.revisionReason}"</div>
+                ` : `
+                  <div class="grid-2">
+                    <button class="btn btn-warn" onclick="openRevisionModal('${g.id}')">ส่งกลับเพื่อแก้ไข</button>
+                    <button class="btn btn-primary" onclick="supervisorPass('${g.id}')">รับรองการตรวจสอบ (ส่งต่อหัวหน้าบอดี้)</button>
+                  </div>
+                `}
+                ${state.revisionTargetId === g.id ? renderRevisionBox(g.id, 'supervisor') : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderSupGroups() {
+      return `
+        <div class="card">
+          <h1 class="h1" style="margin-bottom:10px;">กลุ่มที่อยู่ในความดูแล (DEMO)</h1>
+          ${state.groups.filter(g => g.hasSupervisor).map(g => `
+            <div class="att-row">
+              <strong>${g.name}</strong>
+              <div class="muted">${g.meetingPlace} · สมาชิก ${g.members.length} คน</div>
+              <div class="muted">ผู้รับผิดชอบ: ${g.leaderName}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function openRevisionModal(gid) {
+      state.revisionTargetId = gid;
+      state.revisionReasonInput = '';
+      render();
+    }
+
+    function renderRevisionBox(gid, actorRole) {
+      return `
+        <div class="card" style="margin-top:10px; background:var(--status-warn-bg); border-color:#F3D19E;">
+          <div class="field">
+            <label for="revReason">ระบุเหตุผลที่ขอให้แก้ไข (บังคับกรอก)</label>
+            <textarea id="revReason" class="textarea" placeholder="เช่น กรุณาเพิ่มข้อมูลผู้มาใหม่หรือแผนสัปดาห์หน้า"
+              oninput="state.revisionReasonInput=this.value">${state.revisionReasonInput}</textarea>
+          </div>
+          <div class="grid-2">
+            <button class="btn btn-secondary" onclick="state.revisionTargetId=null;render()">ยกเลิก</button>
+            <button class="btn btn-warn" onclick="confirmRevision('${gid}','${actorRole}')">ยืนยันส่งกลับแก้ไข</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function confirmRevision(gid, actorRole) {
+      if (!state.revisionReasonInput.trim()) {
+        showToast('กรุณากรอกเหตุผลที่ขอให้แก้ไขก่อนส่งกลับ');
+        return;
+      }
+      const grp = state.groups.find(g => g.id === gid);
+      const rep = state.reports[gid];
+      const actor = state.currentUserByRole[actorRole];
+      rep.status = 'needs_revision';
+      rep.revisionReason = state.revisionReasonInput.trim();
+      rep.supervisorReviewedAt = null;
+      state.revisionTargetId = null;
+
+      addAudit(actor.name, 'REVISION_REQUESTED', `${grp.name}: ${rep.revisionReason}`);
+      addNotification(['leader'], `ขอให้แก้ไขรายงาน: ${grp.name}`, `${actor.name} ส่งกลับแก้ไข: "${rep.revisionReason}"`);
+      showToast('ส่งรายงานกลับเพื่อแก้ไขแล้ว');
+      render();
+    }
+
+    function supervisorPass(gid) {
+      const grp = state.groups.find(g => g.id === gid);
+      const rep = state.reports[gid];
+      const actor = state.currentUserByRole.supervisor;
+      rep.status = 'under_review';
+      rep.supervisorReviewedAt = 'วันนี้ 19:35 น.';
+      addAudit(actor.name, 'SUPERVISOR_PASSED', `${grp.name} -> ปลดล็อกให้หัวหน้าบอดี้อนุมัติ (DEC-04)`);
+      addNotification(['body_leader'], `พร้อมอนุมัติ: ${grp.name}`, 'Supervisor ตรวจรับรองแล้ว รอหัวหน้าบอดี้อนุมัติขั้นสุดท้าย');
+      showToast('รับรองการตรวจแล้ว ส่งต่อให้หัวหน้าบอดี้');
+      render();
+    }
+
+    // =========================================================================
+    // SCREEN D: BODY LEADER APPROVAL & SCOPED ASSIGNMENT MANAGEMENT
+    // =========================================================================
+    function renderBodyLeaderOverview() {
+      const nonNormal = renderNonNormalState('ภาพรวมและการอนุมัติบอดี้');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+
+      const myBody = state.bodies.find(b => b.id === 'body-north');
+      const bodyGroups = state.groups.filter(g => g.bodyId === myBody.id);
+      const currentActor = state.currentUserByRole.body_leader;
+
+      return `
+        ${renderUiStateStrip()}
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h1 class="h1">${myBody.name} — อนุมัติรายงานประจำสัปดาห์</h1>
+              <div class="muted">หัวหน้าบอดี้คือผู้อนุมัติขั้นสุดท้ายเพียงผู้เดียว (CD-02) · ห้ามอนุมัติรายงานตนเอง (DEC-05)</div>
+            </div>
+          </div>
+
+          <div class="grid-4" style="margin-bottom:14px;">
+            <div class="kpi-card"><div class="kpi-val">${bodyGroups.length}</div><div class="kpi-label">กลุ่มในบอดี้ (Snapshot)</div></div>
+            <div class="kpi-card"><div class="kpi-val">${bodyGroups.filter(g => ['submitted','under_review'].includes(state.reports[g.id].status)).length}</div><div class="kpi-label">รอตรวจ / รออนุมัติ</div></div>
+            <div class="kpi-card"><div class="kpi-val">${bodyGroups.filter(g => state.reports[g.id].status === 'approved').length}</div><div class="kpi-label">อนุมัติแล้ว</div></div>
+            <div class="kpi-card"><div class="kpi-val" style="color:#B91C1C;">${bodyGroups.filter(g => state.reports[g.id].isBlocked).length}</div><div class="kpi-label">ติดขัด (Blocked)</div></div>
+          </div>
+
+          ${bodyGroups.map(g => {
+            const rep = state.reports[g.id];
+            if (rep.status === 'draft') {
+              return `
+                <div class="att-row" style="display:flex; justify-content:space-between; align-items:center;">
+                  <div><strong>${g.name}</strong><div class="muted">${g.supervisorName}</div></div>
+                  <span class="status-chip st-neutral">ยังไม่ส่งรายงาน (Not Submitted)</span>
+                </div>
+              `;
+            }
+            const awaitingSup = rep.requiresSupervisorReview && !rep.supervisorReviewedAt && rep.status !== 'approved' && rep.status !== 'needs_revision';
+            const isSelfSubmitted = rep.submittedByUserId === currentActor.id;
+            const canApprove = !rep.isBlocked && !awaitingSup && !isSelfSubmitted && ['submitted','under_review'].includes(rep.status);
+
+            return `
+              <div class="att-row">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                  <div>
+                    <strong>${g.name}</strong>
+                    <div class="muted">ผู้ส่ง: ${rep.submittedByName} · ${rep.requiresSupervisorReview ? 'มี Supervisor' : 'Fallback ตรงถึงหัวหน้าบอดี้ (CD-03)'}</div>
+                  </div>
+                  ${statusBadge(rep)}
+                </div>
+
+                ${rep.isBlocked ? `
+                  <div class="banner banner-err" style="margin-bottom:8px;">
+                    <strong>ติดขัด (Blocked): ห้ามอนุมัติรายงานที่ตนเองส่ง และยังไม่มีหัวหน้าบอดี้อีกคนในบอดี้นี้ (DEC-05)</strong>
+                    <span>ระบบแจ้ง Admin แล้ว — ต้องให้ Admin เพิ่มหัวหน้าบอดี้ร่วม (Co-Body Leader) เพื่อปลดล็อก</span>
+                  </div>
+                ` : ''}
+
+                ${awaitingSup ? `
+                  <div class="banner banner-warn" style="margin-bottom:8px;">
+                    <strong>รอ Supervisor ตรวจรับรองก่อน (DEC-04)</strong>
+                    <span>กลุ่มนี้มี ${g.supervisorName} — หัวหน้าบอดี้จะอนุมัติได้เมื่อ Supervisor ตรวจแล้ว</span>
+                  </div>
+                ` : ''}
+
+                ${rep.status !== 'approved' && rep.status !== 'needs_revision' ? `
+                  <div class="grid-2">
+                    <button class="btn btn-warn" onclick="openRevisionModal('${g.id}')">ส่งกลับแก้ไข</button>
+                    <button class="btn btn-primary" ${!canApprove ? 'disabled' : ''} onclick="bodyLeaderApprove('${g.id}')">
+                      ${isSelfSubmitted ? 'อนุมัติไม่ได้ (ผู้ส่งคือตัวคุณเอง)' : (awaitingSup ? 'รอ Supervisor ตรวจก่อน' : 'อนุมัติรายงาน (Final Approve)')}
+                    </button>
+                  </div>
+                ` : rep.status === 'approved' ? `
+                  <div class="status-chip st-ok">อนุมัติโดย ${rep.approvedByName} เมื่อ ${rep.approvedAt}</div>
+                ` : `<div class="status-chip st-warn">ส่งกลับแก้ไขแล้ว: "${rep.revisionReason}"</div>`}
+
+                ${state.revisionTargetId === g.id ? renderRevisionBox(g.id, 'body_leader') : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function bodyLeaderApprove(gid) {
+      const grp = state.groups.find(g => g.id === gid);
+      const rep = state.reports[gid];
+      const actor = state.currentUserByRole.body_leader;
+      if (rep.submittedByUserId === actor.id) {
+        showToast('ห้ามอนุมัติรายงานที่ตนเองเป็นผู้ส่ง (DEC-05)');
+        return;
+      }
+      if (rep.requiresSupervisorReview && !rep.supervisorReviewedAt) {
+        showToast('ต้องให้ Supervisor ตรวจก่อนอนุมัติ (DEC-04)');
+        return;
+      }
+      rep.status = 'approved';
+      rep.approvedByName = actor.name;
+      rep.approvedAt = 'วันนี้ 19:45 น.';
+      addAudit(actor.name, 'REPORT_APPROVED', `${grp.name} ผ่านการอนุมัติขั้นสุดท้าย`);
+      addNotification(['leader', 'supervisor'], `อนุมัติแล้ว: ${grp.name}`, `${actor.name} อนุมัติรายงานประจำสัปดาห์เรียบร้อย`);
+      showToast(`อนุมัติรายงาน ${grp.name} เรียบร้อยแล้ว`);
+      render();
+    }
+
+    function renderBodyLeaderAssignments() {
+      const myBodyAssignments = state.assignments.filter(a => a.bodyId === 'body-north' && a.responsibility !== 'body_leader');
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h1 class="h1">จัดการผู้รับผิดชอบ (เฉพาะ บอดี้ กาฬสินธุ์เหนือ)</h1>
+              <div class="muted">ตาม DEC-09: หัวหน้าบอดี้จัดการ Assignment กลุ่มได้เฉพาะในบอดี้ตนเอง (ไม่สามารถแก้บอดี้อื่นหรือตั้ง Body Leader)</div>
+            </div>
+          </div>
+
+          <div class="card" style="background:var(--bg-canvas); margin-bottom:14px;">
+            <h2 class="h2" style="margin-bottom:8px;">มอบหมายหน้าที่ใหม่ในบอดี้ตนเอง (DEMO)</h2>
+            <div class="grid-3">
+              <div class="field">
+                <label for="blGrp">กลุ่ม</label>
+                <select id="blGrp" class="select">
+                  <option value="กลุ่มบ้านหนองกุง">กลุ่มบ้านหนองกุง</option>
+                  <option value="กลุ่มบ้านโนนทัน">กลุ่มบ้านโนนทัน</option>
+                  <option value="กลุ่มบ้านห้วยสีทน">กลุ่มบ้านห้วยสีทน</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="blPerson">ผู้รับผิดชอบ (DEMO)</label>
+                <input id="blPerson" class="input" value="คุณสุภาพร มั่นคง (DEMO)" />
+              </div>
+              <div class="field">
+                <label for="blResp">หน้าที่</label>
+                <select id="blResp" class="select">
+                  <option value="care_leader">หัวหน้าแคร์ (Supervisor)</option>
+                  <option value="coordinator">ผู้ประสานงาน (Coordinator)</option>
+                  <option value="group_leader">ผู้รับผิดชอบกลุ่ม</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="addBodyAssignment()">+ เพิ่มการมอบหมาย (บันทึกประวัติ Audit)</button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>กลุ่ม</th><th>ผู้รับผิดชอบ</th><th>หน้าที่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+              <tbody>
+                ${myBodyAssignments.map(a => `
+                  <tr>
+                    <td>${a.groupName}</td>
+                    <td>${a.person}</td>
+                    <td>${a.responsibility}</td>
+                    <td><span class="status-chip ${a.status==='active'?'st-ok':'st-neutral'}">${a.status==='active'?'ใช้งานอยู่':'สิ้นสุดแล้ว'}</span></td>
+                    <td>
+                      ${a.status==='active' ? `<button class="btn btn-secondary" style="min-height:44px;padding:4px 12px;" onclick="endAssignment('${a.id}')">สิ้นสุดหน้าที่</button>` : 'บันทึกประวัติแล้ว'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function addBodyAssignment() {
+      const g = document.getElementById('blGrp').value;
+      const p = document.getElementById('blPerson').value.trim();
+      const r = document.getElementById('blResp').value;
+      if (!p) return;
+      state.assignments.unshift({ id: 'asg-' + Date.now(), bodyId: 'body-north', groupName: g, person: p, responsibility: r, status: 'active', since: 'วันนี้' });
+      addAudit(state.currentUserByRole.body_leader.name, 'ASSIGNMENT_CREATED', `${g}: มอบหมาย ${p} เป็น ${r} (DEC-09)`);
+      showToast('เพิ่มการมอบหมายหน้าที่เรียบร้อยแล้ว');
+      render();
+    }
+
+    function endAssignment(aid) {
+      const a = state.assignments.find(x => x.id === aid);
+      a.status = 'ended';
+      addAudit(state.currentUserByRole.body_leader.name, 'ASSIGNMENT_ENDED', `สิ้นสุดหน้าที่ ${a.person} ที่ ${a.groupName} (รักษาประวัติเดิม)`);
+      showToast('สิ้นสุดหน้าที่และเก็บประวัติเรียบร้อย');
+      render();
+    }
+
+    // =========================================================================
+    // SCREEN E: PASTOR DASHBOARD & SUNDAY 20:30 MEETING BRIEF
+    // =========================================================================
+    function renderPastorDashboard() {
+      const nonNormal = renderNonNormalState('ภาพรวมคริสตจักร');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+
+      const reps = Object.values(state.reports);
+      const expected = state.meetingBrief.snapshotExpected;
+      const submitted = reps.filter(r => r.status !== 'draft').length;
+      const missing = expected - submitted;
+      const approved = reps.filter(r => r.status === 'approved').length;
+      const blocked = reps.filter(r => r.isBlocked).length;
+
+      return `
+        ${renderUiStateStrip()}
+        <div class="banner banner-info">
+          <strong>มุมมองศิษยาภิบาล (Pastor Overview · CD-06 &amp; DEC-06)</strong>
+          <span>แสดงภาพรวมทุกบอดี้จาก Snapshot (${expected} กลุ่ม) · ไม่สามารถกดอนุมัติแทนหัวหน้าบอดี้ และซ่อนข้อมูลเบอร์โทร/ที่อยู่ส่วนบุคคล (PII Masked)</span>
+        </div>
+
+        <div class="grid-4">
+          <div class="kpi-card"><div class="kpi-val">${submitted}/${expected}</div><div class="kpi-label">ส่งรายงานแล้ว (ไม่นับ Draft)</div></div>
+          <div class="kpi-card"><div class="kpi-val">${missing}</div><div class="kpi-label">ยังขาดส่ง (รวม Draft)</div></div>
+          <div class="kpi-card"><div class="kpi-val">${approved}</div><div class="kpi-label">อนุมัติครบแล้ว</div></div>
+          <div class="kpi-card"><div class="kpi-val" style="color:#B91C1C;">${blocked}</div><div class="kpi-label">ติดขัด (Blocked)</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h1 class="h1">สถานะรายกลุ่มทุกบอดี้ (จำกัด PII ตาม DEC-06)</h1>
+            <button class="btn btn-primary" onclick="setTab('meeting_brief')">เปิดสรุปประชุมวันอาทิตย์ 20:30 น.</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>กลุ่ม</th><th>บอดี้</th><th>สถานะรายงาน</th><th>ผู้เข้าร่วม</th><th>ข้อมูลติดต่อ (PII)</th></tr></thead>
+              <tbody>
+                ${state.groups.map(g => {
+                  const r = state.reports[g.id];
+                  const att = r.status === 'draft' ? 'ยังไม่ทราบ (Draft ไม่นับ)' : (g.members.filter(m=>m.status==='present'||m.status==='online').length + r.visitors.length) + ' คน';
+                  return `
+                    <tr>
+                      <td><strong>${g.name}</strong></td>
+                      <td>${g.bodyName}</td>
+                      <td>${r.status === 'draft' ? '<span class="status-chip st-neutral">ยังไม่ส่งรายงาน</span>' : statusBadge(r)}</td>
+                      <td>${att}</td>
+                      <td><span class="status-chip st-neutral">ซ่อนเบอร์/ที่อยู่ (จำกัด PII)</span></td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMeetingBrief() {
+      const nonNormal = renderNonNormalState('สรุปประชุมวันอาทิตย์');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+
+      const sections = [
+        { k: '1', t: '1. ภาพรวมทั้งคริสตจักร', d: `บอดี้ใช้งาน 2 แห่ง · กลุ่มคาดหวังตาม Snapshot ${state.meetingBrief.snapshotExpected} กลุ่ม · ส่งแล้ว ณ 20:30 น. 4 กลุ่ม` },
+        { k: '2', t: '2. ภาพรวมแยกตามบอดี้', d: 'บอดี้กาฬสินธุ์เหนือ (ส่ง 3/4 กลุ่ม, 1 กลุ่มรอส่ง) · บอดี้กาฬสินธุ์ใต้ (ส่ง 1/1 กลุ่ม, ติด Blocked)' },
+        { k: '3', t: '3. สถานะการส่งรายงาน', d: 'ทันเวลา 4 กลุ่ม · ฉบับร่างยังไม่ส่ง 1 กลุ่ม (ไม่นับเป็นส่ง) · ติดขัด (Blocked) 2 กลุ่ม' },
+        { k: '4', t: '4. สรุปกิจกรรมพันธกิจ', d: 'แบ่งปันพระคำและอธิษฐาน 4 กลุ่ม · เยี่ยมเยียน 1 กลุ่ม' },
+        { k: '5', t: '5. สรุปการเข้าร่วม', d: 'สมาชิกมาร่วม/ออนไลน์ 6 คน (จากรายงานที่ส่งแล้ว) · ผู้มาใหม่ 0 คนในรายงานที่ส่ง' },
+        { k: '6', t: '6. การติดตามผู้ขาดประชุม', d: 'คุณลุงบุญมี (กลุ่มบ้านโนนทัน) ขาด 2 สัปดาห์ติด — มีรายการติดตามเปิดอยู่' },
+        { k: '7', t: '7. การติดตามผู้มาใหม่', d: 'คุณแก้วตา (กลุ่มบ้านโนนทัน — รอรายงานส่งจริง) · ยินยอม PDPA แล้ว' },
+        { k: '8', t: '8. กลุ่มที่ต้องการความช่วยเหลือ', d: 'กลุ่มบ้านห้วยสีทน: ขอคำอธิษฐานเผื่อคุณแม่ลำดวน' },
+        { k: '9', t: '9. ปัญหาและจุดติดขัด (Issues)', d: '2 กลุ่มติด Blocked (ไม่มีหัวหน้าบอดี้กาฬสินธุ์ใต้ / ห้ามอนุมัติตนเองที่บ้านบึงวิชัย) — แจ้ง Admin แล้ว' },
+        { k: '10', t: '10. แผนดำเนินการสัปดาห์หน้า', d: 'เร่งตั้งหัวหน้าบอดี้กาฬสินธุ์ใต้ และเพิ่ม Co-Body Leader กาฬสินธุ์เหนือ' }
+      ];
+
+      return `
+        ${renderUiStateStrip()}
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h1 class="h1">สรุปประชุมผู้นำวันอาทิตย์ 20:30 น. (10 หมวด)</h1>
+              <div class="muted">${state.meetingBrief.periodCode} · ${state.meetingBrief.generatedAt}</div>
+            </div>
+            <button class="btn btn-secondary" onclick="showToast('ส่งออก PDF สรุปประชุม (ไม่รวม PII) สำเร็จ — DEMO')">ส่งออก PDF (DEMO)</button>
+          </div>
+          <div class="banner banner-ok" style="margin-bottom:14px;">
+            <strong>Immutable Snapshot ยืนยันความถูกต้องย้อนหลัง</strong>
+            <span>บันทึกเมื่อ 20:30 น. Asia/Bangkok — แม้มีรายงานส่งช้าหลัง 20:30 น. (ตอนนี้มี ${state.meetingBrief.lateSubmissionsAfterBrief} ฉบับ) เนื้อหาสรุปประชุมฉบับนี้จะไม่ถูกแก้ไขย้อนหลัง</span>
+          </div>
+          <div class="grid-2">
+            ${sections.map(s => `
+              <div class="att-row">
+                <strong>${s.t}</strong>
+                <div class="muted" style="margin-top:4px;">${s.d}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // SCREEN F: ADMIN GOVERNANCE
+    // =========================================================================
+    function renderAdminPanel() {
+      const nonNormal = renderNonNormalState('ศูนย์จัดการระบบ Admin');
+      if (nonNormal) return renderUiStateStrip() + nonNormal;
+
+      const blockedReps = Object.values(state.reports).filter(r => r.isBlocked);
+      return `
+        ${renderUiStateStrip()}
+        <div class="state-strip">
+          <span style="font-weight:700;">หมวด Admin:</span>
+          <button class="mini-chip ${state.adminSubTab==='users'?'active':''}" onclick="state.adminSubTab='users';render()">ผู้ใช้ &amp; สิทธิ์</button>
+          <button class="mini-chip ${state.adminSubTab==='blocked'?'active':''}" onclick="state.adminSubTab='blocked';render()">แก้ไขจุดติดขัด Blocked (${blockedReps.length})</button>
+          <button class="mini-chip ${state.adminSubTab==='org'?'active':''}" onclick="state.adminSubTab='org';render()">บอดี้ / กลุ่ม / Assignment</button>
+          <button class="mini-chip ${state.adminSubTab==='config'?'active':''}" onclick="state.adminSubTab='config';render()">ตั้งค่าระบบ (DEC)</button>
+        </div>
+
+        ${state.adminSubTab === 'blocked' ? `
+          <div class="card">
+            <h1 class="h1" style="margin-bottom:10px;">แก้ไขรายงานติดขัด (Blocked Queue · CD-07 &amp; DEC-05)</h1>
+            ${blockedReps.length === 0 ? `<div class="banner banner-ok"><strong>ไม่มีรายงานติดขัดในขณะนี้</strong></div>` : blockedReps.map(r => {
+              const g = state.groups.find(x => x.id === r.groupId);
+              return `
+                <div class="att-row">
+                  <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:center;">
+                    <div>
+                      <strong>${g.name} (${g.bodyName})</strong>
+                      <div class="muted">สาเหตุ: ${r.blockedReason === 'no_usable_body_leader' ? 'บอดี้นี้ยังไม่มีหัวหน้าบอดี้ที่มีบัญชีใช้งานได้ (CD-07)' : 'ผู้ส่งคือหัวหน้าบอดี้คนเดียว — ห้ามอนุมัติตนเอง (DEC-05)'}</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="resolveBlocked('${g.bodyId}')">
+                      ${r.blockedReason === 'no_usable_body_leader' ? 'ตั้งค่าหัวหน้าบอดี้ที่มีบัญชีใช้งานได้' : 'เพิ่มหัวหน้าบอดี้ร่วม (Co-Body Leader)'}
+                    </button>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        ${state.adminSubTab === 'users' ? `
+          <div class="card">
+            <h1 class="h1" style="margin-bottom:10px;">จัดการผู้ใช้และบทบาท (ไม่มีระบบ PIN เดิม)</h1>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ชื่อผู้ใช้ (DEMO)</th><th>บทบาทหลัก</th><th>วิธีเข้าสู่ระบบ</th><th>สถานะบัญชีใช้งานได้</th></tr></thead>
+                <tbody>
+                  ${Object.values(state.currentUserByRole).map(u => `
+                    <tr>
+                      <td><strong>${u.name}</strong></td>
+                      <td>${u.label}</td>
+                      <td>LINE Login + Password/Passkey</td>
+                      <td><span class="status-chip st-ok">ใช้งานได้ (Usable)</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : ''}
+
+        ${state.adminSubTab === 'org' ? `
+          <div class="card">
+            <h1 class="h1" style="margin-bottom:10px;">บอดี้, กลุ่มพันธกิจบ้าน และ Assignment (DEMO)</h1>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>บอดี้ / กลุ่ม</th><th>โครงสร้างผู้ดูแล</th><th>สถานะ</th></tr></thead>
+                <tbody>
+                  ${state.groups.map(g => `
+                    <tr><td><strong>${g.name}</strong><div class="muted">${g.bodyName}</div></td><td>${g.supervisorName}</td><td><span class="status-chip st-ok">Active (Snapshot)</span></td></tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : ''}
+
+        ${state.adminSubTab === 'config' ? `
+          <div class="card">
+            <h1 class="h1" style="margin-bottom:10px;">ตั้งค่าระบบที่ล็อกตาม Decision Register (DEC-01..14)</h1>
+            <div class="grid-2">
+              <div class="att-row"><strong>รอบรายงาน (DEC-02)</strong><div class="muted">วันจันทร์ 00:00 – วันอาทิตย์ 23:59 (Asia/Bangkok)</div></div>
+              <div class="att-row"><strong>กำหนดส่ง &amp; สรุปประชุม (DEC-01)</strong><div class="muted">ปิดส่ง วันอาทิตย์ 20:00 น. · สร้าง Meeting Brief 20:30 น.</div></div>
+              <div class="att-row"><strong>ช่องทางแจ้งเตือน (DEC-07)</strong><div class="muted">In-App Inbox + LINE OA เท่านั้น (ปิด Web Push)</div></div>
+              <div class="att-row"><strong>การเข้าสู่ระบบ (DEC-03)</strong><div class="muted">LINE Login / LIFF + Password / Passkey (ไม่มี PIN เดิม)</div></div>
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function resolveBlocked(bodyId) {
+      const body = state.bodies.find(b => b.id === bodyId);
+      body.hasUsableBodyLeader = true;
+      body.coBodyLeaderAvailable = true;
+      Object.values(state.reports).forEach(r => {
+        const g = state.groups.find(x => x.id === r.groupId);
+        if (g.bodyId === bodyId && r.isBlocked) {
+          r.isBlocked = false;
+          r.blockedReason = null;
+        }
+      });
+      state.assignments.unshift({
+        id: 'asg-' + Date.now(),
+        bodyId,
+        groupName: body.name,
+        person: 'อ.กิตติ (Co-Body Leader DEMO)',
+        responsibility: 'body_leader',
+        status: 'active',
+        since: 'วันนี้'
+      });
+      addAudit(state.currentUserByRole.admin.name, 'BLOCKED_RESOLVED', `เพิ่มหัวหน้าบอดี้ที่ใช้งานได้ให้ ${body.name} -> ปลดล็อกรายงานติดขัดแล้ว`);
+      addNotification(['body_leader'], `ปลดล็อกรายงานติดขัดแล้ว (${body.name})`, 'มีหัวหน้าบอดี้ที่สามารถอนุมัติได้เรียบร้อยแล้ว');
+      showToast('ปลดล็อกสถานะ Blocked สำเร็จ!');
+      render();
+    }
+
+    function renderAdminAudit() {
+      return `
+        <div class="card">
+          <h1 class="h1" style="margin-bottom:10px;">บันทึกตรวจสอบการทำงาน (Append-Only Audit Log · DEMO)</h1>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>เวลา</th><th>ผู้ดำเนินการ</th><th>เหตุการณ์</th><th>รายละเอียด</th></tr></thead>
+              <tbody>
+                ${state.auditLogs.map(l => `
+                  <tr>
+                    <td>${l.time}</td>
+                    <td>${l.actor}</td>
+                    <td><span class="status-chip st-info">${l.action}</span></td>
+                    <td>${l.detail}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // SCREEN G: NOTIFICATION INBOX
+    // =========================================================================
+    function renderInbox() {
+      const roleNotifs = state.notifications.filter(n => n.roles.includes(state.role));
+      const filtered = state.inboxFilter === 'unread' ? roleNotifs.filter(n => n.unread) : roleNotifs;
+      const selected = filtered.find(n => n.id === state.selectedNotifId) || filtered[0] || null;
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h1 class="h1">กล่องแจ้งเตือน (In-App Inbox &amp; LINE OA)</h1>
+              <div class="muted">ตาม DEC-07: แจ้งเตือนผ่าน In-App และ LINE OA เท่านั้น (ไม่มี Web Push)</div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="mini-chip ${state.inboxFilter==='all'?'active':''}" onclick="state.inboxFilter='all';render()">ทั้งหมด (${roleNotifs.length})</button>
+              <button class="mini-chip ${state.inboxFilter==='unread'?'active':''}" onclick="state.inboxFilter='unread';render()">ยังไม่อ่าน (${roleNotifs.filter(n=>n.unread).length})</button>
+            </div>
+          </div>
+
+          ${filtered.length === 0 ? `
+            <div class="banner banner-info"><strong>ไม่มีข้อความแจ้งเตือนในหมวดนี้</strong></div>
+          ` : `
+            <div class="grid-2">
+              <div>
+                ${filtered.map(n => `
+                  <div class="att-row" style="cursor:pointer; border-color:${selected && selected.id===n.id ? 'var(--brand-primary)' : 'var(--border-hairline)'}; background:${n.unread?'var(--bg-teal-soft)':'var(--bg-surface)'};"
+                    onclick="selectNotif('${n.id}')">
+                    <div style="display:flex; justify-content:space-between; gap:6px; align-items:center;">
+                      <span class="status-chip ${n.unread?'st-info':'st-neutral'}">${n.unread?'ยังไม่อ่าน':'อ่านแล้ว'}</span>
+                      <span class="muted" style="font-size:0.78rem;">${n.time}</span>
+                    </div>
+                    <div style="font-weight:700; margin-top:6px;">${n.title}</div>
+                    <div class="muted" style="font-size:0.82rem;">ช่องทาง: ${n.channel}</div>
+                  </div>
+                `).join('')}
+              </div>
+              <div>
+                ${selected ? `
+                  <div class="card" style="background:var(--bg-canvas);">
+                    <div class="status-chip st-ok" style="margin-bottom:8px;">สถานะ LINE OA: ส่งถึงผู้รับแล้ว (DEMO)</div>
+                    <h2 class="h2">${selected.title}</h2>
+                    <div class="muted" style="margin-bottom:10px;">${selected.time} · ${selected.channel}</div>
+                    <p>${selected.body}</p>
+                    <button class="btn btn-secondary" onclick="toggleNotifRead('${selected.id}')">
+                      ${selected.unread ? 'ทำเครื่องหมายว่าอ่านแล้ว' : 'ทำเครื่องหมายว่ายังไม่อ่าน'}
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function selectNotif(id) {
+      const n = state.notifications.find(x => x.id === id);
+      if (n) n.unread = false;
+      state.selectedNotifId = id;
+      render();
+    }
+
+    function toggleNotifRead(id) {
+      const n = state.notifications.find(x => x.id === id);
+      if (n) n.unread = !n.unread;
+      render();
+    }
+
+    // =========================================================================
+    // MASTER RENDER
+    // =========================================================================
+    function render() {
+      const role = state.role;
+      const navItems = NAV_CONFIG[role] || [];
+      const u = state.currentUserByRole[role];
+
+      document.getElementById('headerRoleLabel').textContent =
+        role === 'auth' ? 'หน้าจอเข้าสู่ระบบ (Authentication DEMO)' : `${u.name} · ${u.label}`;
+
+      const unreadCount = role === 'auth' ? 0 : state.notifications.filter(n => n.roles.includes(role) && n.unread).length;
+      const badge = document.getElementById('unreadBadge');
+      badge.textContent = unreadCount;
+      badge.style.display = unreadCount > 0 ? 'inline-grid' : 'none';
+
+      // Sidebar
+      document.getElementById('desktopSidebar').innerHTML = role === 'auth'
+        ? `<div class="muted" style="padding:8px;">กรุณาทดลองเข้าสู่ระบบในหน้าจอหลัก</div>`
+        : navItems.map(item => `
+            <button class="nav-btn ${state.tab===item.id?'active':''}" onclick="setTab('${item.id}')">
+              <span>${item.label}</span>
+              ${item.id==='inbox' && unreadCount>0 ? `<span class="badge-count">${unreadCount}</span>` : ''}
+            </button>
+          `).join('');
+
+      // Mobile Bottom Nav
+      document.getElementById('mobileBottomNav').innerHTML = role === 'auth'
+        ? `<button class="m-nav-btn active" onclick="setTab('auth')">เข้าสู่ระบบ</button><div></div><div></div>`
+        : navItems.slice(0, 3).map(item => `
+            <button class="m-nav-btn ${state.tab===item.id?'active':''}" onclick="setTab('${item.id}')">
+              <span>${item.label}</span>
+            </button>
+          `).join('');
+
+      // Content Router
+      let html = '';
+      if (role === 'auth') html = renderAuth();
+      else if (state.tab === 'inbox') html = renderInbox();
+      else if (state.tab === 'report') html = renderLeaderReport();
+      else if (state.tab === 'my_groups') html = renderMyGroups();
+      else if (state.tab === 'review') html = renderSupervisorReview();
+      else if (state.tab === 'sup_groups') html = renderSupGroups();
+      else if (state.tab === 'bl_overview') html = renderBodyLeaderOverview();
+      else if (state.tab === 'bl_assignments') html = renderBodyLeaderAssignments();
+      else if (state.tab === 'pastor_dash') html = renderPastorDashboard();
+      else if (state.tab === 'meeting_brief') html = renderMeetingBrief();
+      else if (state.tab === 'admin_panel') html = renderAdminPanel();
+      else if (state.tab === 'admin_audit') html = renderAdminAudit();
+
+      document.getElementById('mainContent').innerHTML = html;
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "ponytail@ponytail": false,
+    "caveman@caveman": false
+  },
+  "skillOverrides": {
+    "brainstorming": "on",
+    "writing-plans": "on",
+    "executing-plans": "on",
+    "subagent-driven-development": "on",
+    "test-driven-development": "on",
+    "systematic-debugging": "on",
+    "requesting-code-review": "on",
+    "receiving-code-review": "on",
+    "verification-before-completion": "on",
+    "using-git-worktrees": "on",
+    "finishing-a-development-branch": "on",
+    "dispatching-parallel-agents": "on",
+    "impeccable": "on",
+    "frontend-design": "on",
+    "audit": "on",
+    "critique": "on",
+    "polish": "on",
+    "typeset": "on",
+    "layout": "on",
+    "clarify": "on",
+    "harden": "on",
+    "adapt": "on",
+    "task-observer": "on"
+  }
+}
