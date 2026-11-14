@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --fm-canvas: #f8fafc;
+  --fm-surface: #ffffff;
+  --fm-border: #e2e8f0;
+  --fm-ink: #0f172a;
+  --fm-ink-secondary: #334155;
+  --fm-ink-muted: #64748b;
+  --fm-primary: #0f766e;
+  --fm-primary-hover: #115e59;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--fm-canvas);
+  color: var(--fm-ink);
+  font-feature-settings: "kern" 1, "liga" 1;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
