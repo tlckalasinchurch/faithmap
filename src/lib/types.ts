@@ -1,5 +1,5 @@
 export type SystemRole = 'super_admin' | 'admin' | 'mission_leader' | 'standard_user';
-export type AssignmentRole = 'body_leader' | 'care_leader' | 'coordinator' | 'group_leader';
+export type AssignmentRole = 'body_leader' | 'care_leader' | 'coordinator' | 'group_leader' | 'other_authorized';
 
 export interface AssignmentView {
   id: string;
@@ -85,16 +85,20 @@ export interface BodyWithLeaders {
 export interface GroupWithContext {
   id: string;
   groupCode: string;
-  bodyId: string;
+  bodyId: string | null;
   bodyName: string;
   nameTh: string;
   district: string;
   subdistrict: string | null;
-  addressSummary: string;
-  latitude: number;
-  longitude: number;
-  meetingDayOfWeek: number;
-  meetingTimeLocal: string;
+  village?: string | null;
+  careCodeRaw?: string | null;
+  addressSummary: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  assignmentStatus?: 'assigned' | 'pending_assignment';
+  locationStatus?: 'verified' | 'pending_location';
+  meetingDayOfWeek: number | null;
+  meetingTimeLocal: string | null;
   status: string;
   targetAttendance: number;
   notes: string | null;
@@ -122,7 +126,7 @@ export interface ReportQueueItem {
   id: string;
   periodId: string;
   groupId: string;
-  bodyId: string;
+  bodyId: string | null;
   groupName: string;
   groupCode: string;
   district: string;

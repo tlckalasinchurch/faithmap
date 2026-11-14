@@ -82,15 +82,21 @@ export async function getDashboardOverview(
   const visibleBodyIds = new Set(visibleBodies.map((b) => b.id));
 
   const visibleGroups = allGroups.filter(
-    (g) => visibleBodyIds.has(g.bodyId) && canAccessGroup(actor, g.id, g.bodyId)
+    (g) =>
+      (g.bodyId ? visibleBodyIds.has(g.bodyId) : !filterBodyId) &&
+      canAccessGroup(actor, g.id, g.bodyId)
   );
   const visibleGroupIds = new Set(visibleGroups.map((g) => g.id));
 
   const scopedSnapshots = snapshots.filter(
-    (s) => visibleBodyIds.has(s.bodyId) && canAccessGroup(actor, s.groupId, s.bodyId)
+    (s) =>
+      (s.bodyId ? visibleBodyIds.has(s.bodyId) : !filterBodyId) &&
+      canAccessGroup(actor, s.groupId, s.bodyId)
   );
   const scopedReports = reports.filter(
-    (r) => visibleBodyIds.has(r.bodyId) && canAccessGroup(actor, r.groupId, r.bodyId)
+    (r) =>
+      (r.bodyId ? visibleBodyIds.has(r.bodyId) : !filterBodyId) &&
+      canAccessGroup(actor, r.groupId, r.bodyId)
   );
   const nonDraftReports = scopedReports.filter((r) => r.status !== 'draft');
   const openScopedFollowUps = allFollowUps.filter(
@@ -376,11 +382,11 @@ export async function exportScopedCsvData(
 
     const lines = scoped.map((r) => {
       const grp = groupMap.get(r.groupId);
-      const body = bodyMap.get(r.bodyId);
+      const body = r.bodyId ? bodyMap.get(r.bodyId) : undefined;
       return [
         grp?.groupCode ?? '',
         grp?.nameTh ?? '',
-        body?.nameTh ?? '',
+        body?.nameTh ?? 'รอจัดสรรบอดี้',
         r.status,
         r.meetingHeld,
         r.totalAttendees,

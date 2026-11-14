@@ -28,14 +28,26 @@ import { getMondaySundayPeriodBounds, isPastDeadline } from '../time/bangkok';
 export interface BodyApprovalReadiness {
   ready: boolean;
   eligibleApproverUserIds: string[];
-  reasonIfNotReady: 'NO_ELIGIBLE_BODY_LEADER' | 'ONLY_SUBMITTER_IS_BODY_LEADER' | null;
+  reasonIfNotReady:
+    | 'NO_ELIGIBLE_BODY_LEADER'
+    | 'ONLY_SUBMITTER_IS_BODY_LEADER'
+    | 'PENDING_BODY_ASSIGNMENT'
+    | null;
 }
 
 export async function evaluateBodyApprovalReadiness(
   db: FaithMapDb,
-  bodyId: string,
+  bodyId: string | null | undefined,
   excludeUserId?: string | null
 ): Promise<BodyApprovalReadiness> {
+  if (!bodyId) {
+    return {
+      ready: false,
+      eligibleApproverUserIds: [],
+      reasonIfNotReady: 'PENDING_BODY_ASSIGNMENT',
+    };
+  }
+
   const bodyLeaderAssignments = await db
     .select()
     .from(assignments)
@@ -48,7 +60,11 @@ export async function evaluateBodyApprovalReadiness(
       )
     );
 
-  if (bodyLeaderAssignments.length === 0) {
+  const blUserIds = bodyLeaderAssignments
+    .map((a) => a.userId)
+    .filter((id): id is string => Boolean(id));
+
+  if (blUserIds.length === 0) {
     return {
       ready: false,
       eligibleApproverUserIds: [],
@@ -59,12 +75,7 @@ export async function evaluateBodyApprovalReadiness(
   const candidateUsers = await db
     .select()
     .from(users)
-    .where(
-      inArray(
-        users.id,
-        bodyLeaderAssignments.map((a) => a.userId)
-      )
-    );
+    .where(inArray(users.id, blUserIds));
 
   const usableLeaderIds: string[] = [];
   for (const candidate of candidateUsers) {
@@ -116,19 +127,18 @@ export async function evaluateRequiresSupervisorReview(
       )
     );
 
-  if (supervisorAssignments.length === 0) {
+  const supUserIds = supervisorAssignments
+    .map((a) => a.userId)
+    .filter((id): id is string => Boolean(id));
+
+  if (supUserIds.length === 0) {
     return { required: false, supervisorUserIds: [] };
   }
 
   const supervisorUsers = await db
     .select()
     .from(users)
-    .where(
-      inArray(
-        users.id,
-        supervisorAssignments.map((a) => a.userId)
-      )
-    );
+    .where(inArray(users.id, supUserIds));
 
   const usableIds: string[] = [];
   for (const u of supervisorUsers) {
@@ -184,13 +194,14 @@ export async function ensureActiveReportingPeriod(
           );
           const supervisors = groupAssign
             .filter((a) => a.roleType === 'care_leader' || a.roleType === 'coordinator')
-            .map((a) => a.userId);
+            .map((a) => a.userId)
+            .filter((id): id is string => Boolean(id));
           return {
             periodId: created!.id,
             groupId: g.id,
             bodyId: g.bodyId,
             groupNameSnapshot: g.nameTh,
-            bodyNameSnapshot: bodyMap.get(g.bodyId) ?? '',
+            bodyNameSnapshot: g.bodyId ? (bodyMap.get(g.bodyId) ?? 'รอจัดสรรบอดี้') : 'รอจัดสรรบอดี้',
             districtSnapshot: g.district,
             groupStatusSnapshot: g.status,
             targetAttendanceSnapshot: g.targetAttendance,
@@ -282,13 +293,13 @@ export async function listReportsForPeriod(
     .map((r) => {
       const masked = maskDraftReportForViewer(r, actor);
       const grp = groupMap.get(r.groupId);
-      const body = bodyMap.get(r.bodyId);
+      const body = r.bodyId ? bodyMap.get(r.bodyId) : undefined;
       return {
         ...masked,
         groupName: grp?.nameTh ?? '-',
         groupCode: grp?.groupCode ?? '',
         district: grp?.district ?? '',
-        bodyName: body?.nameTh ?? '',
+        bodyName: body?.nameTh ?? 'รอจัดสรรบอดี้',
         submittedByName:
           masked.isDraftHidden || !r.submittedByUserId
             ? null

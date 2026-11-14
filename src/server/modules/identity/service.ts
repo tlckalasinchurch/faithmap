@@ -20,7 +20,7 @@ import {
 
 export type SystemRole = 'super_admin' | 'admin' | 'mission_leader' | 'standard_user';
 export type AccountStatus = 'pending_activation' | 'active' | 'suspended' | 'revoked';
-export type AssignmentRole = 'body_leader' | 'care_leader' | 'coordinator' | 'group_leader';
+export type AssignmentRole = 'body_leader' | 'care_leader' | 'coordinator' | 'group_leader' | 'other_authorized';
 
 export interface ActiveAssignmentView {
   id: string;
@@ -109,7 +109,7 @@ export async function buildActorContext(
     for (const b of bodyRows) bodyMap.set(b.id, b.nameTh);
   }
 
-  const groupMap = new Map<string, { nameTh: string; bodyId: string }>();
+  const groupMap = new Map<string, { nameTh: string; bodyId: string | null }>();
   if (groupIds.length > 0) {
     const groupRows = await db
       .select({

@@ -17,7 +17,8 @@ export function isGlobalMetricsReader(actor: ActorContext): boolean {
   return isAdmin(actor) || isMissionLeader(actor);
 }
 
-export function isBodyLeaderForBody(actor: ActorContext, bodyId: string): boolean {
+export function isBodyLeaderForBody(actor: ActorContext, bodyId: string | null | undefined): boolean {
+  if (!bodyId) return false;
   return actor.bodyLeaderBodyIds.has(bodyId);
 }
 
@@ -32,7 +33,7 @@ export function isSupervisorForGroup(actor: ActorContext, groupId: string): bool
 export function canAccessGroup(
   actor: ActorContext,
   groupId: string,
-  bodyId: string
+  bodyId: string | null | undefined
 ): boolean {
   if (isGlobalMetricsReader(actor)) return true;
   if (isBodyLeaderForBody(actor, bodyId)) return true;
@@ -42,7 +43,7 @@ export function canAccessGroup(
 export function assertCanAccessGroup(
   actor: ActorContext,
   groupId: string,
-  bodyId: string
+  bodyId: string | null | undefined
 ): void {
   if (!canAccessGroup(actor, groupId, bodyId)) {
     throw new AppError(
@@ -56,12 +57,13 @@ export function assertCanAccessGroup(
 /**
  * DEC-09: Body Leaders may manage groups and assignments ONLY within their assigned Body.
  */
-export function canManageBodyScope(actor: ActorContext, bodyId: string): boolean {
+export function canManageBodyScope(actor: ActorContext, bodyId: string | null | undefined): boolean {
   if (isAdmin(actor)) return true;
+  if (!bodyId) return false;
   return isBodyLeaderForBody(actor, bodyId);
 }
 
-export function assertCanManageBodyScope(actor: ActorContext, bodyId: string): void {
+export function assertCanManageBodyScope(actor: ActorContext, bodyId: string | null | undefined): void {
   if (!canManageBodyScope(actor, bodyId)) {
     throw new AppError(
       403,
@@ -94,11 +96,11 @@ export function maskPhoneNumber(phoneE164: string | null | undefined): string | 
 }
 
 export function maskDisplayPiiName(
-  fullName: string,
+  fullName: string | null | undefined,
   displayName: string,
   isUnmasked: boolean
 ): string {
-  if (isUnmasked) return fullName;
+  if (isUnmasked) return fullName || displayName;
   const firstToken = displayName.split(/\s+/)[0] || 'สมาชิก';
   return `${firstToken} (ปกปิด PII ตาม DEC-06)`;
 }

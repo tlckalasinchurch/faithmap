@@ -29,6 +29,7 @@ import { MeetingBriefTab } from './MeetingBriefTab';
 import { KalasinMapTab } from './KalasinMapTab';
 import { PastoralCareTab } from './PastoralCareTab';
 import { GovernanceTab } from './GovernanceTab';
+import { DataIngestionTab } from './DataIngestionTab';
 
 interface AuthState {
   authenticated: boolean;
@@ -214,6 +215,11 @@ export function FaithMapApp() {
     { id: 'map', label: 'แผนที่กาฬสินธุ์', Icon: MapIcon },
     { id: 'pastoral', label: 'สมาชิก & ผู้เยี่ยม', Icon: Users },
     { id: 'governance', label: 'องค์กร & สิทธิ์', Icon: Building2 },
+    ...(workspace.actor.user.systemRole === 'super_admin' ||
+    workspace.actor.user.systemRole === 'admin' ||
+    workspace.actor.bodyLeaderBodyIds.length > 0
+      ? [{ id: 'ingestion', label: 'นำเข้า & ตรวจข้อมูล', Icon: ClipboardCheck }]
+      : []),
   ];
 
   return (
@@ -227,7 +233,7 @@ export function FaithMapApp() {
               <span>FaithMap</span>
             </span>
             <span className="hidden rounded-full border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1 text-xs font-bold text-[#F0F4F8] sm:inline-block">
-              พันธกิจบ้าน จ.กาฬสินธุ์ · {workspace.overview.selectedPeriod.periodKey}
+              พันธกิจบ้าน จ.กาฬสินธุ์ ({workspace.overview.selectedPeriod.periodKey})
             </span>
           </div>
 
@@ -277,7 +283,7 @@ export function FaithMapApp() {
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5">
             <nav
               aria-label="เมนูหลัก FaithMap"
-              className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:pb-0"
+              className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0"
             >
               {navItems.map((item) => {
                 const Icon = item.Icon;
@@ -287,7 +293,7 @@ export function FaithMapApp() {
                     key={item.id}
                     type="button"
                     onClick={() => navigateTab(item.id)}
-                    className={`flex min-h-[48px] shrink-0 items-center gap-2 rounded-xl border-2 px-4 py-2 text-base font-extrabold transition ${
+                    className={`flex min-h-[48px] shrink-0 items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition ${
                       isActive
                         ? 'border-[#141413] bg-[#C8FF00] text-[#141413] shadow-[3px_3px_0px_#1D4ED8]'
                         : 'border-[#27272A] bg-[#27272A] text-[#F0F4F8] hover:border-[#C8FF00]'
@@ -302,7 +308,7 @@ export function FaithMapApp() {
 
             <div className="hidden items-center gap-2 xl:flex">
               <span className="rounded-lg border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1.5 text-xs font-bold text-[#F0F4F8]">
-                {workspace.actor.user.displayName} · {workspace.actor.user.systemRole}
+                {workspace.actor.user.displayName}
               </span>
             </div>
           </div>
@@ -310,7 +316,7 @@ export function FaithMapApp() {
       </header>
 
       {/* Main Studio Canvas */}
-      <main className="mx-auto max-w-7xl px-4 pb-24 pt-6 md:pb-8">
+      <main className="mx-auto w-full min-w-0 max-w-7xl overflow-x-hidden px-4 pb-24 pt-6 md:pb-8">
         {errorMsg && (
           <div
             role="alert"
@@ -376,6 +382,10 @@ export function FaithMapApp() {
         {activeTab === 'governance' && (
           <GovernanceTab workspace={workspace} onRefresh={() => loadApp()} />
         )}
+
+        {activeTab === 'ingestion' && (
+          <DataIngestionTab workspace={workspace} onRefreshWorkspace={() => loadApp()} />
+        )}
       </main>
 
       {/* Mobile / LINE LIFF Bottom Navigation Bar (5 primary tabs + safe-area) */}
@@ -399,7 +409,7 @@ export function FaithMapApp() {
                 key={`bottom-${item.id}`}
                 type="button"
                 onClick={() => navigateTab(item.id)}
-                className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-extrabold ${
+                className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-extrabold ${
                   isActive
                     ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
                     : 'text-[var(--fm-paper)]'

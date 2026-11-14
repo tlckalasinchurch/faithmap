@@ -95,9 +95,31 @@ export function KalasinMapTab({
   const mapInstanceRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
 
+  const locatedGroups = useMemo(
+    () =>
+      workspace.groups.filter(
+        (g): g is GroupWithContext & { latitude: number; longitude: number } =>
+          g.locationStatus !== 'pending_location' &&
+          typeof g.latitude === 'number' &&
+          typeof g.longitude === 'number'
+      ),
+    [workspace.groups]
+  );
+
+  const unlocatedGroups = useMemo(
+    () =>
+      workspace.groups.filter(
+        (g) =>
+          g.locationStatus === 'pending_location' ||
+          g.latitude === null ||
+          g.longitude === null
+      ),
+    [workspace.groups]
+  );
+
   const visibleGroups = useMemo(
-    () => (layerFilter === 'TEAM_G' ? [] : workspace.groups),
-    [workspace.groups, layerFilter]
+    () => (layerFilter === 'TEAM_G' ? [] : locatedGroups),
+    [locatedGroups, layerFilter]
   );
 
   const visibleFieldPoints = useMemo(
@@ -188,7 +210,7 @@ export function KalasinMapTab({
       el.style.background = isSelected ? 'var(--fm-lime)' : 'var(--fm-paper)';
       el.style.color = 'var(--fm-ink)';
       el.style.fontWeight = '800';
-      el.style.fontSize = '12px';
+      el.style.fontSize = '13px';
       el.style.cursor = 'pointer';
       el.style.whiteSpace = 'nowrap';
       el.style.boxShadow = isSelected
@@ -237,7 +259,7 @@ export function KalasinMapTab({
       el.style.background = isSelected ? 'var(--fm-lime)' : 'var(--fm-paper)';
       el.style.color = 'var(--fm-ink)';
       el.style.fontWeight = '800';
-      el.style.fontSize = '11px';
+      el.style.fontSize = '12px';
       el.style.cursor = 'pointer';
       el.style.whiteSpace = 'nowrap';
       el.style.boxShadow = isSelected
@@ -254,7 +276,7 @@ export function KalasinMapTab({
       badge.style.borderRadius = '9999px';
       badge.style.background = 'var(--fm-violet)';
       badge.style.color = 'var(--fm-paper)';
-      badge.style.fontSize = '10px';
+      badge.style.fontSize = '12px';
       badge.style.fontWeight = '800';
 
       const text = document.createElement('span');
@@ -284,6 +306,7 @@ export function KalasinMapTab({
       selected.kind === 'group' ? selected.group.latitude : selected.point.latitude;
     const targetLng =
       selected.kind === 'group' ? selected.group.longitude : selected.point.longitude;
+    if (typeof targetLat !== 'number' || typeof targetLng !== 'number') return;
 
     map.flyTo({
       center: [targetLng, targetLat],
@@ -569,7 +592,7 @@ export function KalasinMapTab({
                         : 'z-10 bg-[var(--fm-paper)] text-[var(--fm-ink)] shadow-[2px_2px_0px_var(--fm-ink)]'
                     }`}
                   >
-                    <span className="whitespace-nowrap text-[11px] font-extrabold">
+                    <span className="whitespace-nowrap text-xs font-extrabold">
                       <span className="mr-1 text-[var(--fm-violet)]">G{pt.no}</span>
                       {pt.name}
                     </span>
@@ -610,13 +633,16 @@ export function KalasinMapTab({
                     <div className="p-3">
                       <dt className="text-xs font-extrabold text-[var(--fm-ink)]">ที่ตั้งกลุ่มบ้าน</dt>
                       <dd className="mt-0.5 font-bold text-[var(--fm-ink)]">
-                        {selected.group.addressSummary}
+                        {selected.group.addressSummary || 'ยังไม่ระบุสถานที่นัดหมาย'}
                       </dd>
                     </div>
                     <div className="p-3">
                       <dt className="text-xs font-extrabold text-[var(--fm-ink)]">พิกัด GPS จริง</dt>
                       <dd className="tabular-nums mt-0.5 font-mono text-sm font-extrabold text-[var(--fm-violet)]">
-                        {selected.group.latitude.toFixed(6)}, {selected.group.longitude.toFixed(6)}
+                        {typeof selected.group.latitude === 'number' &&
+                        typeof selected.group.longitude === 'number'
+                          ? `${selected.group.latitude.toFixed(6)}, ${selected.group.longitude.toFixed(6)}`
+                          : 'รอปักหมุด (ไม่มีพิกัด)'}
                       </dd>
                     </div>
                     <div className="p-3">
@@ -727,6 +753,62 @@ export function KalasinMapTab({
           )}
         </section>
       </div>
+
+      {unlocatedGroups.length > 0 && (
+        <section
+          aria-label="รายการกลุ่มรอปักหมุด"
+          className="fm-bento-card bg-[var(--fm-paper)] p-5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-[var(--fm-ink)] pb-3">
+            <div>
+              <h2 className="font-display text-xl font-extrabold text-[var(--fm-ink)]">
+                กลุ่มรอปักหมุด (ไม่มีพิกัด GPS)
+              </h2>
+              <p className="text-sm font-medium text-[var(--fm-ink-muted)]">
+                แสดงเฉพาะรายชื่อและคำอธิบายสถานที่จริง โดยไม่ปักหมุดสมมติบนแผนที่
+              </p>
+            </div>
+            <span className="rounded-full border-2 border-[var(--fm-ink)] bg-[var(--fm-amber-soft)] px-3 py-1 text-sm font-extrabold text-[var(--fm-ink)]">
+              {unlocatedGroups.length} กลุ่ม
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {unlocatedGroups.map((g) => (
+              <div
+                key={g.id}
+                className="flex flex-col justify-between rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-4"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-extrabold text-[var(--fm-violet)]">
+                      {g.groupCode}
+                    </span>
+                    <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-paper)] px-2 py-0.5 text-xs font-bold text-[var(--fm-ink)]">
+                      อ.{g.district}
+                    </span>
+                  </div>
+                  <h3 className="mt-1.5 font-display text-lg font-extrabold text-[var(--fm-ink)]">
+                    {g.nameTh}
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--fm-ink-secondary)]">
+                    {g.addressSummary || 'ยังไม่ระบุสถานที่นัดหมาย'}
+                  </p>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--fm-ink)]/20 pt-2.5 text-xs font-bold text-[var(--fm-ink-muted)]">
+                  <span>{g.bodyName || 'รอจัดสรรบอดี้'}</span>
+                  <button
+                    type="button"
+                    onClick={() => onSelectGroupReport(g.id)}
+                    className="min-h-[40px] rounded-lg border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3 py-1.5 font-extrabold text-[var(--fm-ink)] hover:bg-[var(--fm-lime)]"
+                  >
+                    ส่งรายงาน
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

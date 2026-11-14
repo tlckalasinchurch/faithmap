@@ -437,7 +437,7 @@ export function WeeklyReportTab({
       <section className="fm-panel overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#141413] px-6 py-4 text-[#F0F4F8]">
           <h1 className="font-display text-2xl font-extrabold sm:text-3xl">
-            {selectedGroup?.nameTh ?? 'เลือกกลุ่มพันธกิจบ้าน'} · รอบ {period.periodKey}
+            {selectedGroup?.nameTh ?? 'เลือกกลุ่มพันธกิจบ้าน'} (รอบ {period.periodKey})
           </h1>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -471,11 +471,25 @@ export function WeeklyReportTab({
               onChange={(e) => setSelectedGroupId(e.target.value)}
               className="fm-input w-full text-lg font-extrabold"
             >
-              {(editableGroups.length > 0 ? editableGroups : workspace.groups).map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nameTh} ({g.district}) — [{g.currentReport.status}]
-                </option>
-              ))}
+              {(editableGroups.length > 0 ? editableGroups : workspace.groups).map((g) => {
+                const statusLabel =
+                  g.currentReport.status === 'approved'
+                    ? 'อนุมัติแล้ว'
+                    : g.currentReport.status === 'submitted'
+                      ? 'ส่งแล้ว'
+                      : g.currentReport.status === 'under_review'
+                        ? 'กำลังตรวจ'
+                        : g.currentReport.status === 'needs_revision'
+                          ? 'รอแก้ไข'
+                          : g.currentReport.status === 'draft'
+                            ? 'ฉบับร่าง'
+                            : 'ยังไม่ส่ง';
+                return (
+                  <option key={g.id} value={g.id}>
+                    {g.nameTh} ({g.district}) — {statusLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

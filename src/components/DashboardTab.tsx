@@ -148,11 +148,21 @@ export function DashboardTab({
                 onChange={(e) => onSelectPeriod(e.target.value)}
                 className="min-h-[48px] w-full max-w-full rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-3 py-2 text-sm font-bold text-[#F0F4F8] sm:w-auto"
               >
-                {periods.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#141413] text-[#F0F4F8]">
-                    {p.periodKey} ({p.startDate} – {p.endDate}) [{p.status}]
-                  </option>
-                ))}
+                {periods.map((p) => {
+                  const statusLabel =
+                    p.status === 'open'
+                      ? 'เปิดรับรายงาน'
+                      : p.status === 'cutoff_reached'
+                        ? 'ปิดรับแล้ว'
+                        : p.status === 'brief_published'
+                          ? 'สรุปผลแล้ว'
+                          : 'ปิดรอบ';
+                  return (
+                    <option key={p.id} value={p.id} className="bg-[#141413] text-[#F0F4F8]">
+                      {p.periodKey} ({p.startDate} – {p.endDate}) {statusLabel}
+                    </option>
+                  );
+                })}
               </select>
 
               <a
@@ -270,25 +280,25 @@ export function DashboardTab({
                     {b.bodyCode}
                   </span>
                 </div>
-                <div className="tabular-nums grid grid-cols-5 gap-2 text-center font-mono text-sm">
+                <div className="tabular-nums grid grid-cols-3 gap-2 text-center font-mono text-sm sm:grid-cols-5">
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-[11px] font-bold">ทั้งหมด</div>
+                    <div className="text-xs font-bold">ทั้งหมด</div>
                     <div className="font-extrabold">{b.expectedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-[11px] font-bold">ส่งแล้ว</div>
+                    <div className="text-xs font-bold">ส่งแล้ว</div>
                     <div className="font-extrabold text-[#1D4ED8]">{b.submittedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-[11px] font-bold">อนุมัติ</div>
+                    <div className="text-xs font-bold">อนุมัติ</div>
                     <div className="font-extrabold text-[#047857]">{b.approvedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-[11px] font-bold">ติดขัด</div>
+                    <div className="text-xs font-bold">ติดขัด</div>
                     <div className="font-extrabold text-[#BE123C]">{b.blockedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[#C8FF00] p-2">
-                    <div className="text-[11px] font-bold">คนรวม</div>
+                    <div className="text-xs font-bold">คนรวม</div>
                     <div className="font-extrabold text-[#141413]">{b.attendance}</div>
                   </div>
                 </div>

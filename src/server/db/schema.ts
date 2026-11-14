@@ -35,22 +35,38 @@ export const members = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     memberCode: text('member_code').notNull().unique(),
-    fullName: text('full_name').notNull(),
+    fullName: text('full_name'),
+    nickname: text('nickname'),
     displayName: text('display_name').notNull(),
+    ageRaw: text('age_raw'),
+    occupationRaw: text('occupation_raw'),
+    locationTextRaw: text('location_text_raw'),
     phoneE164: text('phone_e164'),
     lineUserId: text('line_user_id'),
     email: text('email'),
     membershipStatus: text('membership_status').notNull().default('active'),
+    verificationStatus: text('verification_status').notNull().default('unverified'),
     privacyConsentStatus: text('privacy_consent_status').notNull().default('consented'),
     consentRecordedAt: timestamp('consent_recorded_at', { withTimezone: true }),
+    sourceBatchId: uuid('source_batch_id'),
+    sourceRowRef: text('source_row_ref'),
+    sourceProvenance: jsonb('source_provenance').$type<Record<string, unknown>>(),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check(
+      'members_identity_chk',
+      sql`${t.fullName} IS NOT NULL OR ${t.nickname} IS NOT NULL`
+    ),
+    check(
       'members_status_chk',
       sql`${t.membershipStatus} IN ('active', 'inactive', 'transferred', 'archived')`
+    ),
+    check(
+      'members_verification_chk',
+      sql`${t.verificationStatus} IN ('unverified', 'pending_review', 'verified')`
     ),
     check(
       'members_consent_chk',
@@ -175,21 +191,28 @@ export const houseMissionGroups = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     groupCode: text('group_code').notNull().unique(),
-    bodyId: uuid('body_id')
-      .notNull()
-      .references(() => bodies.id, { onDelete: 'restrict' }),
+    bodyId: uuid('body_id').references(() => bodies.id, { onDelete: 'set null' }),
     nameTh: text('name_th').notNull(),
     nameEn: text('name_en'),
+    groupNameFromSheet: text('group_name_from_sheet'),
+    formTitle: text('form_title'),
+    careCodeRaw: text('care_code_raw'),
     district: text('district').notNull(),
     subdistrict: text('subdistrict'),
+    village: text('village'),
     province: text('province').notNull().default('กาฬสินธุ์'),
-    addressSummary: text('address_summary').notNull(),
-    latitude: doublePrecision('latitude').notNull(),
-    longitude: doublePrecision('longitude').notNull(),
-    meetingDayOfWeek: integer('meeting_day_of_week').notNull().default(5),
-    meetingTimeLocal: text('meeting_time_local').notNull().default('19:00'),
+    addressSummary: text('address_summary'),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    meetingDayOfWeek: integer('meeting_day_of_week'),
+    meetingTimeLocal: text('meeting_time_local'),
+    meetingTimeRaw: text('meeting_time_raw'),
     status: text('status').notNull().default('active'),
+    assignmentStatus: text('assignment_status').notNull().default('assigned'),
+    locationStatus: text('location_status').notNull().default('verified'),
     targetAttendance: integer('target_attendance').notNull().default(12),
+    sourceBatchId: uuid('source_batch_id'),
+    sourceRef: text('source_ref'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -197,14 +220,29 @@ export const houseMissionGroups = pgTable(
   (t) => [
     check(
       'groups_status_chk',
-      sql`${t.status} IN ('active', 'inactive', 'merged', 'archived')`
+      sql`${t.status} IN ('active', 'inactive', 'merged', 'archived', 'pending_activation')`
+    ),
+    check(
+      'groups_assignment_status_chk',
+      sql`${t.assignmentStatus} IN ('assigned', 'pending_assignment')`
+    ),
+    check(
+      'groups_location_status_chk',
+      sql`${t.locationStatus} IN ('verified', 'pending_location')`
     ),
     check(
       'groups_meeting_day_chk',
-      sql`${t.meetingDayOfWeek} BETWEEN 1 AND 7`
+      sql`${t.meetingDayOfWeek} IS NULL OR ${t.meetingDayOfWeek} BETWEEN 1 AND 7`
+    ),
+    check(
+      'groups_coords_pair_chk',
+      sql`(${t.latitude} IS NULL AND ${t.longitude} IS NULL) OR (${t.latitude} BETWEEN -90 AND 90 AND ${t.longitude} BETWEEN -180 AND 180)`
     ),
     index('groups_body_idx').on(t.bodyId),
     index('groups_status_idx').on(t.status),
+    index('groups_assignment_body_idx').on(t.assignmentStatus, t.bodyId),
+    index('groups_location_status_idx').on(t.locationStatus),
+    index('groups_district_idx').on(t.district),
   ]
 );
 
@@ -258,9 +296,13 @@ export const assignments = pgTable(
   'assignments',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    stewardMemberId: uuid('steward_member_id').references(() => members.id, {
+      onDelete: 'set null',
+    }),
+    stewardDisplayName: text('steward_display_name'),
+    linkStatus: text('link_status').notNull().default('linked_user'),
+    sourceRoleLabel: text('source_role_label'),
     scopeType: text('scope_type').notNull(),
     bodyId: uuid('body_id').references(() => bodies.id, { onDelete: 'cascade' }),
     groupId: uuid('group_id').references(() => houseMissionGroups.id, { onDelete: 'cascade' }),
@@ -280,16 +322,24 @@ export const assignments = pgTable(
   },
   (t) => [
     check(
+      'assignments_steward_identity_chk',
+      sql`${t.userId} IS NOT NULL OR ${t.stewardMemberId} IS NOT NULL OR (${t.stewardDisplayName} IS NOT NULL AND length(trim(${t.stewardDisplayName})) > 0)`
+    ),
+    check(
+      'assignments_link_status_chk',
+      sql`${t.linkStatus} IN ('linked_user', 'unlinked_pending_account')`
+    ),
+    check(
       'assignments_scope_chk',
       sql`(${t.scopeType} = 'body' AND ${t.bodyId} IS NOT NULL AND ${t.groupId} IS NULL) OR (${t.scopeType} = 'group' AND ${t.groupId} IS NOT NULL AND ${t.bodyId} IS NULL)`
     ),
     check(
       'assignments_role_chk',
-      sql`${t.roleType} IN ('body_leader', 'care_leader', 'coordinator', 'group_leader')`
+      sql`${t.roleType} IN ('body_leader', 'care_leader', 'coordinator', 'group_leader', 'other_authorized')`
     ),
     check(
       'assignments_scope_role_match_chk',
-      sql`(${t.scopeType} = 'body' AND ${t.roleType} = 'body_leader') OR (${t.scopeType} = 'group' AND ${t.roleType} IN ('care_leader', 'coordinator', 'group_leader'))`
+      sql`(${t.scopeType} = 'body' AND ${t.roleType} = 'body_leader') OR (${t.scopeType} = 'group' AND ${t.roleType} IN ('care_leader', 'coordinator', 'group_leader', 'other_authorized'))`
     ),
     uniqueIndex('assignments_active_primary_body_uidx')
       .on(t.bodyId, t.roleType)
@@ -299,10 +349,10 @@ export const assignments = pgTable(
       .where(sql`${t.effectiveTo} IS NULL AND ${t.isPrimary} = true AND ${t.scopeType} = 'group'`),
     uniqueIndex('assignments_active_user_group_role_uidx')
       .on(t.userId, t.groupId, t.roleType)
-      .where(sql`${t.effectiveTo} IS NULL AND ${t.scopeType} = 'group'`),
+      .where(sql`${t.effectiveTo} IS NULL AND ${t.scopeType} = 'group' AND ${t.userId} IS NOT NULL`),
     uniqueIndex('assignments_active_user_body_role_uidx')
       .on(t.userId, t.bodyId, t.roleType)
-      .where(sql`${t.effectiveTo} IS NULL AND ${t.scopeType} = 'body'`),
+      .where(sql`${t.effectiveTo} IS NULL AND ${t.scopeType} = 'body' AND ${t.userId} IS NOT NULL`),
     index('assignments_user_active_idx').on(t.userId, t.effectiveTo),
     index('assignments_group_active_idx').on(t.groupId, t.effectiveTo),
     index('assignments_body_active_idx').on(t.bodyId, t.effectiveTo),
@@ -375,11 +425,9 @@ export const periodGroupSnapshots = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => houseMissionGroups.id, { onDelete: 'restrict' }),
-    bodyId: uuid('body_id')
-      .notNull()
-      .references(() => bodies.id, { onDelete: 'restrict' }),
+    bodyId: uuid('body_id').references(() => bodies.id, { onDelete: 'set null' }),
     groupNameSnapshot: text('group_name_snapshot').notNull(),
-    bodyNameSnapshot: text('body_name_snapshot').notNull(),
+    bodyNameSnapshot: text('body_name_snapshot').notNull().default('รอจัดสรรบอดี้'),
     districtSnapshot: text('district_snapshot').notNull(),
     groupStatusSnapshot: text('group_status_snapshot').notNull(),
     targetAttendanceSnapshot: integer('target_attendance_snapshot').notNull().default(12),
@@ -407,9 +455,7 @@ export const weeklyReports = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => houseMissionGroups.id, { onDelete: 'restrict' }),
-    bodyId: uuid('body_id')
-      .notNull()
-      .references(() => bodies.id, { onDelete: 'restrict' }),
+    bodyId: uuid('body_id').references(() => bodies.id, { onDelete: 'set null' }),
     status: text('status').notNull().default('draft'),
     meetingHeld: boolean('meeting_held'),
     notHeldReason: text('not_held_reason'),
@@ -705,5 +751,215 @@ export const idempotencyKeys = pgTable(
   (t) => [
     uniqueIndex('idempotency_scope_key_uidx').on(t.scopeKey, t.idempotencyKey),
     index('idempotency_expires_idx').on(t.expiresAt),
+  ]
+);
+
+// --- Phase 2: Controlled Import, Staging, Data Quality & Mapping Tables ---
+
+export const importBatches = pgTable(
+  'import_batches',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    batchCode: text('batch_code').notNull().unique(),
+    sourceArchiveName: text('source_archive_name').notNull(),
+    fileSha256: text('file_sha256').notNull().unique(),
+    selectionPolicyVersion: text('selection_policy_version').notNull().default('1.0'),
+    status: text('status').notNull().default('uploaded'),
+    summaryJson: jsonb('summary_json').$type<Record<string, unknown>>().notNull().default({}),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    rolledBackAt: timestamp('rolled_back_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'import_batches_status_chk',
+      sql`${t.status} IN ('uploaded', 'validated', 'staged', 'review_in_progress', 'partially_promoted', 'promoted', 'rolled_back', 'failed')`
+    ),
+    index('import_batches_status_idx').on(t.status),
+  ]
+);
+
+export const stagingGroups = pgTable(
+  'staging_groups',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => importBatches.id, { onDelete: 'cascade' }),
+    groupRef: text('group_ref').notNull(),
+    sourceFile: text('source_file').notNull(),
+    sourceSheet: text('source_sheet').notNull(),
+    rowSha256: text('row_sha256').notNull(),
+    groupNameFromSheetRaw: text('group_name_from_sheet_raw').notNull(),
+    formTitleRaw: text('form_title_raw'),
+    districtNormalized: text('district_normalized'),
+    subdistrictRaw: text('subdistrict_raw'),
+    villageRaw: text('village_raw'),
+    meetingTimeStartRaw: text('meeting_time_start_raw'),
+    meetingTimeEndRaw: text('meeting_time_end_raw'),
+    meetingPlaceRaw: text('meeting_place_raw'),
+    leaderRaw: text('leader_raw'),
+    coordinatorRaw: text('coordinator_raw'),
+    careLabelRaw: text('care_label_raw'),
+    careCodeRaw: text('care_code_raw'),
+    memberRowCountDerived: integer('member_row_count_derived').notNull().default(0),
+    dataStatus: text('data_status').notNull().default('raw'),
+    promotedGroupId: uuid('promoted_group_id').references(() => houseMissionGroups.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('staging_groups_batch_sha_uidx').on(t.batchId, t.rowSha256),
+    uniqueIndex('staging_groups_batch_ref_uidx').on(t.batchId, t.groupRef),
+    check(
+      'staging_groups_status_chk',
+      sql`${t.dataStatus} IN ('raw', 'normalized', 'pending_review', 'conflict', 'incomplete', 'approved', 'rejected', 'promoted')`
+    ),
+    index('staging_groups_batch_status_idx').on(t.batchId, t.dataStatus),
+  ]
+);
+
+export const stagingMemberRows = pgTable(
+  'staging_member_rows',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => importBatches.id, { onDelete: 'cascade' }),
+    stagingGroupId: uuid('staging_group_id')
+      .notNull()
+      .references(() => stagingGroups.id, { onDelete: 'cascade' }),
+    memberRowRef: text('member_row_ref').notNull(),
+    sourceFile: text('source_file').notNull(),
+    sourceSheet: text('source_sheet').notNull(),
+    sourceRow: integer('source_row').notNull(),
+    rowSha256: text('row_sha256').notNull(),
+    fullNameRaw: text('full_name_raw'),
+    nicknameRaw: text('nickname_raw'),
+    ageRaw: text('age_raw'),
+    occupationRaw: text('occupation_raw'),
+    locationRaw: text('location_raw'),
+    rawCellsJson: jsonb('raw_cells_json').$type<Record<string, unknown>>().notNull().default({}),
+    dataStatus: text('data_status').notNull().default('raw'),
+    duplicateCandidateOfMemberId: uuid('duplicate_candidate_of_member_id').references(
+      () => members.id,
+      { onDelete: 'set null' }
+    ),
+    promotedMemberId: uuid('promoted_member_id').references(() => members.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('staging_members_batch_sha_uidx').on(t.batchId, t.rowSha256),
+    uniqueIndex('staging_members_batch_ref_uidx').on(t.batchId, t.memberRowRef),
+    check(
+      'staging_members_status_chk',
+      sql`${t.dataStatus} IN ('raw', 'normalized', 'pending_review', 'conflict', 'incomplete', 'approved', 'rejected', 'promoted')`
+    ),
+    index('staging_members_batch_status_idx').on(t.batchId, t.dataStatus),
+  ]
+);
+
+export const dataQualityIssues = pgTable(
+  'data_quality_issues',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    batchId: uuid('batch_id').references(() => importBatches.id, { onDelete: 'cascade' }),
+    targetType: text('target_type').notNull(),
+    targetId: uuid('target_id').notNull(),
+    issueCode: text('issue_code').notNull(),
+    severity: text('severity').notNull().default('review'),
+    status: text('status').notNull().default('open'),
+    summarySafeText: text('summary_safe_text').notNull(),
+    proposedValueJson: jsonb('proposed_value_json').$type<Record<string, unknown>>(),
+    resolutionNote: text('resolution_note'),
+    resolvedByUserId: uuid('resolved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'dq_target_type_chk',
+      sql`${t.targetType} IN ('staging_group', 'staging_member', 'group', 'member')`
+    ),
+    check('dq_severity_chk', sql`${t.severity} IN ('info', 'review', 'blocking')`),
+    check(
+      'dq_status_chk',
+      sql`${t.status} IN ('open', 'approved_fix', 'rejected', 'resolved', 'deferred')`
+    ),
+    index('dq_issues_status_code_idx').on(t.status, t.issueCode, t.batchId),
+  ]
+);
+
+export const districtCanonicalMappings = pgTable('district_canonical_mappings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  districtRaw: text('district_raw').notNull().unique(),
+  districtCanonical: text('district_canonical').notNull(),
+  province: text('province').notNull().default('กาฬสินธุ์'),
+  approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const careBodyMappings = pgTable('care_body_mappings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  careCodeRaw: text('care_code_raw').notNull().unique(),
+  bodyId: uuid('body_id')
+    .notNull()
+    .references(() => bodies.id, { onDelete: 'cascade' }),
+  notes: text('notes'),
+  approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const candidateLocationMatches = pgTable(
+  'candidate_location_matches',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    groupId: uuid('group_id').references(() => houseMissionGroups.id, { onDelete: 'cascade' }),
+    stagingGroupId: uuid('staging_group_id').references(() => stagingGroups.id, {
+      onDelete: 'cascade',
+    }),
+    candidateSource: text('candidate_source').notNull().default('kalasin-field-points'),
+    candidateNo: integer('candidate_no').notNull(),
+    candidateName: text('candidate_name').notNull(),
+    latitude: doublePrecision('latitude').notNull(),
+    longitude: doublePrecision('longitude').notNull(),
+    matchStatus: text('match_status').notNull().default('pending'),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'candidate_loc_target_chk',
+      sql`${t.groupId} IS NOT NULL OR ${t.stagingGroupId} IS NOT NULL`
+    ),
+    check(
+      'candidate_loc_status_chk',
+      sql`${t.matchStatus} IN ('pending', 'confirmed', 'rejected')`
+    ),
+    index('candidate_loc_status_idx').on(t.matchStatus),
   ]
 );

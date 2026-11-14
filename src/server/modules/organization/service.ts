@@ -38,8 +38,12 @@ export async function listBodiesWithLeaders(db: FaithMapDb, actor: ActorContext)
     .from(assignments)
     .where(and(eq(assignments.scopeType, 'body'), isNull(assignments.effectiveTo)));
 
+  const assignedUserIds = activeBodyAssignments
+    .map((a) => a.userId)
+    .filter((id): id is string => Boolean(id));
+
   const assignedUsers =
-    activeBodyAssignments.length > 0
+    assignedUserIds.length > 0
       ? await db
           .select({
             id: users.id,
@@ -48,12 +52,7 @@ export async function listBodiesWithLeaders(db: FaithMapDb, actor: ActorContext)
             passwordHash: users.passwordHash,
           })
           .from(users)
-          .where(
-            inArray(
-              users.id,
-              activeBodyAssignments.map((a) => a.userId)
-            )
-          )
+          .where(inArray(users.id, assignedUserIds))
       : [];
 
   const userMap = new Map(assignedUsers.map((u) => [u.id, u]));
@@ -72,13 +71,13 @@ export async function listBodiesWithLeaders(db: FaithMapDb, actor: ActorContext)
       const leaders = activeBodyAssignments
         .filter((a) => a.bodyId === b.id)
         .map((a) => {
-          const u = userMap.get(a.userId);
+          const u = a.userId ? userMap.get(a.userId) : undefined;
           return {
             assignmentId: a.id,
-            userId: a.userId,
-            displayName: u?.displayName ?? 'ไม่ระบุชื่อ',
-            accountStatus: u?.status ?? 'unknown',
-            isUsable: usabilityMap.get(a.userId) ?? false,
+            userId: a.userId ?? '',
+            displayName: u?.displayName ?? a.stewardDisplayName ?? 'ไม่ระบุชื่อ',
+            accountStatus: u?.status ?? (a.linkStatus === 'unlinked_pending_account' ? 'unlinked_pending_account' : 'unknown'),
+            isUsable: a.userId ? (usabilityMap.get(a.userId) ?? false) : false,
             isPrimary: a.isPrimary,
           };
         });
@@ -145,14 +144,17 @@ export async function listGroupsWithContext(
   return visibleGroups.map((g) => {
     const groupAssignments = activeGroupAssignments
       .filter((a) => a.groupId === g.id)
-      .map((a) => ({
-        id: a.id,
-        userId: a.userId,
-        displayName: userMap.get(a.userId)?.displayName ?? 'ไม่ระบุชื่อ',
-        accountStatus: userMap.get(a.userId)?.status ?? 'unknown',
-        roleType: a.roleType as AssignmentRole,
-        isPrimary: a.isPrimary,
-      }));
+      .map((a) => {
+        const u = a.userId ? userMap.get(a.userId) : undefined;
+        return {
+          id: a.id,
+          userId: a.userId ?? '',
+          displayName: u?.displayName ?? a.stewardDisplayName ?? 'ไม่ระบุชื่อ',
+          accountStatus: u?.status ?? (a.linkStatus === 'unlinked_pending_account' ? 'unlinked_pending_account' : 'unknown'),
+          roleType: a.roleType as AssignmentRole,
+          isPrimary: a.isPrimary,
+        };
+      });
 
     const rawReport = reportByGroupId.get(g.id);
     // FR-07.5: Draft reports MUST appear as not_submitted to non-group-leaders!
@@ -206,7 +208,7 @@ export async function listGroupsWithContext(
 
     return {
       ...g,
-      bodyName: bodyMap.get(g.bodyId)?.nameTh ?? '',
+      bodyName: g.bodyId ? bodyMap.get(g.bodyId)?.nameTh ?? '' : 'รอจัดสรรบอดี้',
       assignments: groupAssignments,
       currentReport: reportSummary,
     };
@@ -218,34 +220,44 @@ export async function createGroup(
   actor: ActorContext,
   input: {
     groupCode: string;
-    bodyId: string;
+    bodyId?: string | null;
     nameTh: string;
     district: string;
-    subdistrict?: string;
-    addressSummary: string;
-    latitude: number;
-    longitude: number;
-    meetingDayOfWeek?: number;
-    meetingTimeLocal?: string;
+    subdistrict?: string | null;
+    village?: string | null;
+    careCodeRaw?: string | null;
+    addressSummary?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    meetingDayOfWeek?: number | null;
+    meetingTimeLocal?: string | null;
     targetAttendance?: number;
     notes?: string;
   }
 ) {
-  assertCanManageBodyScope(actor, input.bodyId);
+  assertCanManageBodyScope(actor, input.bodyId ?? null);
+
+  const hasCoords =
+    typeof input.latitude === 'number' && typeof input.longitude === 'number';
+  const bodyId = input.bodyId ?? null;
 
   const [created] = await db
     .insert(houseMissionGroups)
     .values({
       groupCode: input.groupCode.trim().toUpperCase(),
-      bodyId: input.bodyId,
+      bodyId,
       nameTh: input.nameTh.trim(),
       district: input.district.trim(),
       subdistrict: input.subdistrict?.trim() ?? null,
-      addressSummary: input.addressSummary.trim(),
-      latitude: input.latitude,
-      longitude: input.longitude,
-      meetingDayOfWeek: input.meetingDayOfWeek ?? 5,
-      meetingTimeLocal: input.meetingTimeLocal ?? '19:00',
+      village: input.village?.trim() ?? null,
+      careCodeRaw: input.careCodeRaw?.trim() ?? null,
+      addressSummary: input.addressSummary?.trim() ?? null,
+      latitude: hasCoords ? input.latitude! : null,
+      longitude: hasCoords ? input.longitude! : null,
+      assignmentStatus: bodyId ? 'assigned' : 'pending_assignment',
+      locationStatus: hasCoords ? 'verified' : 'pending_location',
+      meetingDayOfWeek: input.meetingDayOfWeek ?? null,
+      meetingTimeLocal: input.meetingTimeLocal ?? null,
       targetAttendance: input.targetAttendance ?? 12,
       notes: input.notes ?? null,
     })
@@ -256,7 +268,12 @@ export async function createGroup(
     action: 'group_created',
     targetType: 'house_mission_group',
     targetId: created!.id,
-    metadata: { groupCode: created!.groupCode, bodyId: created!.bodyId },
+    metadata: {
+      groupCode: created!.groupCode,
+      bodyId: created!.bodyId,
+      assignmentStatus: created!.assignmentStatus,
+      locationStatus: created!.locationStatus,
+    },
   });
 
   return created!;
@@ -297,19 +314,21 @@ export async function transferGroupToBody(
 
     const [updated] = await tdb
       .update(houseMissionGroups)
-      .set({ bodyId: toBodyId, updatedAt: new Date() })
+      .set({ bodyId: toBodyId, assignmentStatus: 'assigned', updatedAt: new Date() })
       .where(eq(houseMissionGroups.id, groupId))
       .returning();
 
     // Note: Historical period_group_snapshots remain immutable (DEC-08).
-    await tdb.insert(groupBodyTransfers).values({
-      groupId,
-      fromBodyId: group.bodyId,
-      toBodyId,
-      effectivePeriodId: openPeriod?.id ?? null,
-      reason,
-      transferredByUserId: actor.user.id,
-    });
+    if (group.bodyId) {
+      await tdb.insert(groupBodyTransfers).values({
+        groupId,
+        fromBodyId: group.bodyId,
+        toBodyId,
+        effectivePeriodId: openPeriod?.id ?? null,
+        reason,
+        transferredByUserId: actor.user.id,
+      });
+    }
 
     await recordSecurityAudit(tdb, {
       actorUserId: actor.user.id,
@@ -351,7 +370,7 @@ export async function assignLeadershipRole(
     if (!input.groupId) {
       throw new AppError(400, 'INVALID_ASSIGNMENT', 'กรุณาระบุกลุ่มพันธกิจสำหรับบทบาทระดับกลุ่ม');
     }
-    if (!['care_leader', 'coordinator', 'group_leader'].includes(input.roleType)) {
+    if (!['care_leader', 'coordinator', 'group_leader', 'other_authorized'].includes(input.roleType)) {
       throw new AppError(400, 'INVALID_ASSIGNMENT', 'บทบาทระดับกลุ่มไม่ถูกต้อง');
     }
     const [grp] = await db

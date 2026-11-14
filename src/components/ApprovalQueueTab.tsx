@@ -131,7 +131,7 @@ export function ApprovalQueueTab({
             ['submitted', 'under_review'].includes(report.status);
           const isSelfSubmitter = report.submittedByUserId === actor.user.id;
           const canApproveRole =
-            bodyLeaderBodies.has(report.bodyId) &&
+            (report.bodyId ? bodyLeaderBodies.has(report.bodyId) : false) &&
             !report.isDraftHidden &&
             ['submitted', 'under_review'].includes(report.status);
 
