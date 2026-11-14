@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api-client';
+import { normalizeThaiPhone } from '@/lib/phone';
 import type { WorkspacePayload } from '@/lib/types';
 
 export function PastoralCareTab({
@@ -45,7 +46,7 @@ export function PastoralCareTab({
           groupId,
           fullName,
           nickname: nickname || null,
-          phoneE164: phone || null,
+          phoneE164: normalizeThaiPhone(phone),
           consentForContact: consent,
           visitType: 'new_visitor',
           createFollowUp: true,
@@ -120,116 +121,118 @@ export function PastoralCareTab({
   return (
     <div className="space-y-6">
       {isPiiMaskedView && (
-        <div className="flex items-start gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-950">
-          <Lock className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" aria-hidden="true" />
+        <section className="fm-panel flex items-start gap-3.5 bg-[#DBEAFE] p-5 text-[#141413]">
+          <Lock className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
           <div>
-            <p className="text-base font-bold">โหมดปกป้องข้อมูลส่วนบุคคล (DEC-06 PII Masking)</p>
-            <p className="text-sm">
-              บทบาทระดับภาพรวม (เช่น ศิษยาภิบาล) จะเห็นภาพรวมการดูแลโดยไม่เปิดเผยเบอร์โทรและชื่อ-นามสกุลจริงรายบุคคล
+            <h1 className="font-display text-xl font-extrabold text-[#141413]">
+              ซ่อนเบอร์โทรส่วนตัวอัตโนมัติ
+            </h1>
+            <p className="mt-1 text-base font-medium text-[#141413]">
+              ในมุมมองภาพรวม (เช่น ศิษยาภิบาล) ระบบจะซ่อนเบอร์โทรและชื่อจริงรายบุคคลเพื่อความเป็นส่วนตัว
             </p>
           </div>
-        </div>
+        </section>
       )}
 
       {msg && (
         <div
           role="alert"
-          className={`rounded-xl border p-4 text-base font-semibold ${
+          className={`fm-panel p-4 text-base font-extrabold ${
             msg.type === 'ok'
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
-              : 'border-rose-300 bg-rose-50 text-rose-950'
+              ? 'bg-[#C8FF00] text-[#141413]'
+              : 'bg-[#FFE4E6] text-[#881337]'
           }`}
         >
           {msg.text}
         </div>
       )}
 
-      {/* Visitor Registration Card (DEC-10 PDPA) */}
-      <form
-        onSubmit={handleRegisterVisitor}
-        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        <div className="flex items-center gap-2">
-          <UserPlus className="h-5 w-5 text-teal-700" aria-hidden="true" />
-          <h3 className="text-xl font-bold text-slate-900">
-            บันทึกผู้เยี่ยมใหม่ (บังคับยินยอม PDPA ก่อนเก็บเบอร์โทร · DEC-10)
-          </h3>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <select
-            aria-label="เลือกกลุ่มพันธกิจ"
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value)}
-            className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-          >
-            {workspace.groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nameTh}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="ชื่อ-นามสกุลผู้เยี่ยม *"
-            className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base"
-          />
-          <input
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="ชื่อเล่น"
-            className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base"
-          />
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="เบอร์โทร +66..."
-            className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base"
-          />
-        </div>
-
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <label className="flex min-h-[48px] cursor-pointer items-center gap-3 text-base text-slate-800">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="h-5 w-5 accent-teal-700"
-            />
-            <span>ผู้เยี่ยมให้ความยินยอมเก็บข้อมูลติดต่อ (PDPA Consent DEC-10)</span>
-          </label>
-          <button
-            type="submit"
-            disabled={busy || !groupId}
-            className="min-h-[48px] rounded-xl bg-teal-700 px-5 py-2 text-base font-bold text-white hover:bg-teal-800 disabled:opacity-50"
-          >
+      {/* Visitor Registration Bento Form (DEC-10 PDPA) */}
+      <form onSubmit={handleRegisterVisitor} className="fm-panel overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#C8FF00] px-6 py-4">
+          <h2 className="font-display text-2xl font-extrabold text-[#141413]">
             บันทึกผู้เยี่ยมใหม่
-          </button>
+          </h2>
+          <UserPlus className="h-6 w-6 text-[#141413]" aria-hidden="true" />
+        </div>
+
+        <div className="space-y-4 p-6">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <select
+              aria-label="เลือกกลุ่มพันธกิจ"
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              className="fm-input font-bold"
+            >
+              {workspace.groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nameTh}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              required
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="ชื่อ-นามสกุลผู้เยี่ยม *"
+              className="fm-input"
+            />
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="ชื่อเล่น"
+              className="fm-input"
+            />
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="เบอร์โทร เช่น 081-234-5678"
+              className="fm-input"
+            />
+          </div>
+
+          <div className="flex flex-col justify-between gap-3 border-t-2 border-dashed border-[#141413]/30 pt-4 sm:flex-row sm:items-center">
+            <label className="flex min-h-[48px] cursor-pointer items-center gap-3 text-base font-bold text-[#141413]">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="h-5 w-5 accent-[#1D4ED8]"
+              />
+              <span>ผู้เยี่ยมยินยอมให้เก็บเบอร์โทรเพื่อติดต่อเยี่ยมเยียน</span>
+            </label>
+            <button
+              type="submit"
+              disabled={busy || !groupId}
+              className="fm-btn fm-btn-violet text-base"
+            >
+              <span>บันทึกผู้เยี่ยมใหม่</span>
+            </button>
+          </div>
         </div>
       </form>
 
-      {/* Follow-Up Queue */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-teal-700" aria-hidden="true" />
-          <h3 className="text-xl font-bold text-slate-900">
-            งานเยี่ยมติดตามอภิบาล ({workspace.followUps.length} รายการ)
-          </h3>
+      {/* Follow-Up Queue Ledger */}
+      <section className="fm-panel overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
+          <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+            คิวงานเยี่ยมติดตามอภิบาล ({workspace.followUps.length} รายการ)
+          </h2>
+          <ClipboardList className="h-6 w-6 text-[#1D4ED8]" aria-hidden="true" />
         </div>
-        <div className="space-y-2.5">
+
+        <div className="divide-y-2 divide-[#141413]">
           {workspace.followUps.map((f) => (
             <div
               key={f.id}
-              className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 sm:flex-row sm:items-center"
+              className="flex flex-col justify-between gap-3 bg-white px-6 py-4 sm:flex-row sm:items-center"
             >
               <div>
-                <div className="text-base font-bold text-slate-900">{f.title}</div>
-                <div className="text-sm text-slate-600">
+                <div className="text-base font-extrabold text-[#141413]">{f.title}</div>
+                <div className="text-sm font-medium text-[#27272A]">
                   {f.groupName} {f.notes ? `· ${f.notes}` : ''}
                 </div>
               </div>
@@ -241,23 +244,23 @@ export function PastoralCareTab({
                         type="button"
                         disabled={busy}
                         onClick={() => handleFollowUpStatus(f.id, 'in_progress')}
-                        className="min-h-[44px] rounded-xl border border-sky-300 bg-sky-50 px-3 text-sm font-bold text-sky-900"
+                        className="fm-btn bg-[#DBEAFE] px-3.5 py-1.5 text-sm text-[#141413]"
                       >
-                        กำลังติดตาม
+                        <span>กำลังติดตาม</span>
                       </button>
                     )}
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => handleFollowUpStatus(f.id, 'completed')}
-                      className="inline-flex min-h-[44px] items-center gap-1 rounded-xl bg-emerald-700 px-3 text-sm font-bold text-white"
+                      className="fm-btn fm-btn-lime px-4 py-1.5 text-sm"
                     >
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                       <span>เยี่ยมสำเร็จ</span>
                     </button>
                   </>
                 ) : (
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold text-emerald-900">
+                  <span className="fm-sticker bg-[#C8FF00] text-[#141413]">
                     ดำเนินการเสร็จสิ้น
                   </span>
                 )}
@@ -265,32 +268,33 @@ export function PastoralCareTab({
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Visitors & Members Grids */}
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-teal-700" aria-hidden="true" />
-            <h3 className="text-xl font-bold text-slate-900">
-              ผู้เยี่ยม ({workspace.visitors.length})
-            </h3>
+      {/* Visitors & Members Split Ledgers */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="fm-panel overflow-hidden">
+          <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#DBEAFE] px-6 py-4">
+            <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+              ทำเนียบผู้เยี่ยม ({workspace.visitors.length})
+            </h2>
+            <UserCheck className="h-6 w-6 text-[#141413]" aria-hidden="true" />
           </div>
-          <div className="space-y-2.5">
+
+          <div className="divide-y-2 divide-[#141413]">
             {workspace.visitors.map((v) => (
               <div
                 key={v.id}
-                className="flex flex-col justify-between gap-2 rounded-xl border border-slate-200 p-3 sm:flex-row sm:items-center"
+                className="flex flex-col justify-between gap-3 bg-white px-6 py-4 sm:flex-row sm:items-center"
               >
                 <div>
-                  <div className="text-base font-bold text-slate-900">{v.fullName}</div>
-                  <div className="text-sm text-slate-600">
+                  <div className="text-base font-extrabold text-[#141413]">{v.fullName}</div>
+                  <div className="text-sm font-medium text-[#27272A]">
                     {v.originGroupName} · โทร: {v.phone ?? 'ไม่ระบุ'} · PDPA:{' '}
                     {v.consentForContact ? 'ยินยอมแล้ว' : 'ยังไม่ให้เบอร์'}
                   </div>
                 </div>
                 {v.convertedMemberId ? (
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+                  <span className="fm-sticker bg-[#C8FF00] text-[#141413]">
                     โอนเป็นสมาชิกแล้ว
                   </span>
                 ) : (
@@ -299,43 +303,44 @@ export function PastoralCareTab({
                       type="button"
                       disabled={busy}
                       onClick={() => handleConvertVisitor(v.id, v.firstOriginGroupId)}
-                      className="min-h-[44px] shrink-0 rounded-xl border border-teal-700 px-3 text-sm font-bold text-teal-800 hover:bg-teal-50"
+                      className="fm-btn fm-btn-paper px-3.5 py-1.5 text-sm"
                     >
-                      รับเป็นสมาชิกกลุ่ม
+                      <span>รับเป็นสมาชิกกลุ่ม</span>
                     </button>
                   )
                 )}
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <Users className="h-5 w-5 text-teal-700" aria-hidden="true" />
-            <h3 className="text-xl font-bold text-slate-900">
+        <section className="fm-panel overflow-hidden">
+          <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#FEF3C7] px-6 py-4">
+            <h2 className="font-display text-2xl font-extrabold text-[#141413]">
               สมาชิกกลุ่มพันธกิจบ้าน ({workspace.members.length})
-            </h3>
+            </h2>
+            <Users className="h-6 w-6 text-[#141413]" aria-hidden="true" />
           </div>
-          <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+
+          <div className="max-h-[460px] divide-y-2 divide-[#141413] overflow-y-auto">
             {workspace.members.map((m) => (
               <div
                 key={m.membershipId}
-                className="flex items-center justify-between rounded-xl border border-slate-200 p-3"
+                className="flex items-center justify-between gap-3 bg-white px-6 py-3.5"
               >
                 <div>
-                  <div className="text-base font-bold text-slate-900">{m.fullName}</div>
-                  <div className="text-sm text-slate-600">
+                  <div className="text-base font-extrabold text-[#141413]">{m.fullName}</div>
+                  <div className="text-sm font-medium text-[#27272A]">
                     {m.groupName} · โทร: {m.phone ?? '-'}
                   </div>
                 </div>
-                <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                <span className="fm-sticker bg-[#E2E8F0] text-[#141413]">
                   {m.membershipRole}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

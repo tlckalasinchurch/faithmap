@@ -44,6 +44,7 @@ export function GovernanceTab({
 
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
   async function runOrgAction(body: Record<string, unknown>, okText: string) {
     setBusy(true);
@@ -64,59 +65,62 @@ export function GovernanceTab({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center gap-2 text-sm font-semibold text-teal-800">
-          <Building2 className="h-4 w-4" aria-hidden="true" />
-          <span>โครงสร้างองค์กรแบบ 2 ระดับ (Body → House Mission Group) และผู้ดูแล</span>
+      <section className="fm-panel-ink flex flex-wrap items-center justify-between gap-4 p-6">
+        <div>
+          <h1 className="font-display text-3xl font-extrabold text-[#F0F4F8]">
+            จัดการองค์กร (บอดี้ → กลุ่มบ้าน) และสิทธิ์ผู้ดูแล
+          </h1>
+          <p className="mt-1 text-base font-medium text-[#E2E8F0]">
+            มอบหมายบทบาทผู้รับผิดชอบ ย้ายสังกัดบอดี้โดยคงประวัติรายงานเดิม และตรวจสอบบันทึกความปลอดภัย
+          </p>
         </div>
-        <h2 className="mt-1 text-2xl font-bold text-slate-900">
-          จัดการกลุ่มพันธกิจ การมอบหมายผู้นำ และบันทึกความปลอดภัย
-        </h2>
-      </div>
+        <Building2 className="h-8 w-8 text-[#C8FF00]" aria-hidden="true" />
+      </section>
 
       {msg && (
         <div
           role="alert"
-          className={`rounded-xl border p-4 text-base font-semibold ${
+          className={`fm-panel p-4 text-base font-extrabold ${
             msg.type === 'ok'
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
-              : 'border-rose-300 bg-rose-50 text-rose-950'
+              ? 'bg-[#C8FF00] text-[#141413]'
+              : 'bg-[#FFE4E6] text-[#881337]'
           }`}
         >
           {msg.text}
         </div>
       )}
 
-      {/* Bodies Health Grid */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Bodies Health Ledger */}
+      <section className="fm-panel grid divide-y-2 divide-[#141413] overflow-hidden md:grid-cols-2 md:divide-x-2 md:divide-y-0">
         {workspace.bodies.map((b) => (
-          <div
-            key={b.id}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-2">
+          <div key={b.id} className="bg-white p-6">
+            <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <span className="text-xs font-bold text-slate-500">{b.code}</span>
-                <h3 className="text-xl font-bold text-slate-900">{b.nameTh}</h3>
+                <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+                  {b.nameTh}
+                </h2>
+                <span className="mt-1 inline-block rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-xs font-bold text-[#141413]">
+                  {b.code}
+                </span>
               </div>
               <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                className={`fm-sticker ${
                   b.hasEligibleBodyLeader
-                    ? 'bg-emerald-50 text-emerald-900'
-                    : 'bg-rose-100 text-rose-900'
+                    ? 'bg-[#C8FF00] text-[#141413]'
+                    : 'bg-[#FFE4E6] text-[#881337]'
                 }`}
               >
                 {b.hasEligibleBodyLeader
-                  ? 'พร้อมอนุมัติ (มี Body Leader)'
-                  : 'ขาด Body Leader (เสี่ยง Blocked CD-07)'}
+                  ? 'พร้อมอนุมัติ (มีหัวหน้าบอดี้)'
+                  : 'ขาดหัวหน้าบอดี้ (รายงานจะส่งต่อไม่ได้)'}
               </span>
             </div>
 
-            <div className="mt-3 space-y-1.5 text-sm text-slate-700">
+            <div className="mt-4 divide-y-2 divide-[#141413] rounded-xl border-2 border-[#141413] bg-[#F0F4F8]">
               {b.bodyLeaders.map((l) => (
                 <div
                   key={l.assignmentId}
-                  className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
+                  className="flex items-center justify-between px-4 py-2.5 text-sm font-bold text-[#141413]"
                 >
                   <span>
                     {l.displayName} ({l.accountStatus})
@@ -124,19 +128,30 @@ export function GovernanceTab({
                   {isAdmin && (
                     <button
                       type="button"
-                      onClick={() =>
-                        runOrgAction(
+                      disabled={busy}
+                      onClick={() => {
+                        const key = `revoke:${l.assignmentId}`;
+                        if (confirmKey !== key) {
+                          setConfirmKey(key);
+                          return;
+                        }
+                        setConfirmKey(null);
+                        void runOrgAction(
                           {
                             action: 'revoke_assignment',
                             assignmentId: l.assignmentId,
                             reason: 'ปรับปรุงการมอบหมายระดับบอดี้',
                           },
                           'ถอดถอนตำแหน่งระดับบอดี้เรียบร้อย'
-                        )
-                      }
-                      className="text-xs font-bold text-rose-700 hover:underline"
+                        );
+                      }}
+                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-xs ${
+                        confirmKey === `revoke:${l.assignmentId}`
+                          ? 'bg-[var(--fm-coral)] text-[var(--fm-paper)]'
+                          : 'bg-[#FFE4E6] text-[#881337]'
+                      }`}
                     >
-                      ถอดถอน
+                      {confirmKey === `revoke:${l.assignmentId}` ? 'กดซ้ำเพื่อยืนยันถอดถอน' : 'ถอดถอน'}
                     </button>
                   )}
                 </div>
@@ -144,272 +159,295 @@ export function GovernanceTab({
             </div>
           </div>
         ))}
-      </div>
+      </section>
 
       {/* Assign Leadership Role (DEC-09 Enforced) */}
       {canManageAnyGroup && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <UserCog className="h-5 w-5 text-teal-700" aria-hidden="true" />
-            <h3 className="text-xl font-bold text-slate-900">
-              มอบหมายหน้าที่ผู้นำแบบยืดหยุ่น (Care / Coordinator / Group Leader / Body Leader)
-            </h3>
+        <section className="fm-panel overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#C8FF00] px-6 py-4">
+            <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+              มอบหมายหน้าที่ผู้นำแบบยืดหยุ่น (Care / Coordinator / Group / Body Leader)
+            </h2>
+            <UserCog className="h-6 w-6 text-[#141413]" aria-hidden="true" />
           </div>
-          <p className="mb-4 text-sm text-slate-600">
-            หัวหน้าบอดี้มอบหมายบทบาทได้เฉพาะกลุ่มในบอดี้ของตนเองเท่านั้น (DEC-09) และระบบรับเฉพาะบัญชีที่เปิดใช้งานพร้อมล็อกอินแล้ว
-          </p>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <select
-              aria-label="ระดับการมอบหมาย"
-              value={assignScope}
-              onChange={(e) => {
-                const v = e.target.value as 'body' | 'group';
-                setAssignScope(v);
-                setAssignRole(v === 'body' ? 'body_leader' : 'care_leader');
-              }}
-              className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-            >
-              <option value="group">ระดับกลุ่มพันธกิจบ้าน</option>
-              {isAdmin && <option value="body">ระดับบอดี้ (Body Leader)</option>}
-            </select>
+          <div className="space-y-4 p-6">
+            <p className="text-base font-medium text-[#27272A]">
+              หัวหน้าบอดี้มอบหมายบทบาทได้เฉพาะกลุ่มในบอดี้ของตนเองเท่านั้น
+              และระบบรับเฉพาะบัญชีที่เปิดใช้งานพร้อมล็อกอินแล้ว
+            </p>
 
-            {assignScope === 'body' ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <select
-                aria-label="เลือกบอดี้"
-                value={assignBodyId}
-                onChange={(e) => setAssignBodyId(e.target.value)}
-                className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
+                aria-label="ระดับการมอบหมาย"
+                value={assignScope}
+                onChange={(e) => {
+                  const v = e.target.value as 'body' | 'group';
+                  setAssignScope(v);
+                  setAssignRole(v === 'body' ? 'body_leader' : 'care_leader');
+                }}
+                className="fm-input font-bold"
               >
-                {workspace.bodies.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nameTh}
-                  </option>
-                ))}
+                <option value="group">ระดับกลุ่มพันธกิจบ้าน</option>
+                {isAdmin && <option value="body">ระดับบอดี้ (Body Leader)</option>}
               </select>
-            ) : (
-              <select
-                aria-label="เลือกกลุ่มพันธกิจ"
-                value={assignGroupId}
-                onChange={(e) => setAssignGroupId(e.target.value)}
-                className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-              >
-                {workspace.groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.nameTh} ({g.bodyName})
-                  </option>
-                ))}
-              </select>
-            )}
 
-            <select
-              aria-label="เลือกบทบาท"
-              value={assignRole}
-              onChange={(e) => setAssignRole(e.target.value as AssignmentRole)}
-              className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-            >
               {assignScope === 'body' ? (
-                <option value="body_leader">หัวหน้าบอดี้ (body_leader)</option>
+                <select
+                  aria-label="เลือกบอดี้"
+                  value={assignBodyId}
+                  onChange={(e) => setAssignBodyId(e.target.value)}
+                  className="fm-input font-bold"
+                >
+                  {workspace.bodies.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nameTh}
+                    </option>
+                  ))}
+                </select>
               ) : (
-                <>
-                  <option value="care_leader">หัวหน้าแคร์ (care_leader)</option>
-                  <option value="coordinator">ผู้ประสานงาน (coordinator)</option>
-                  <option value="group_leader">ผู้นำกลุ่ม (group_leader)</option>
-                </>
+                <select
+                  aria-label="เลือกกลุ่มพันธกิจ"
+                  value={assignGroupId}
+                  onChange={(e) => setAssignGroupId(e.target.value)}
+                  className="fm-input font-bold"
+                >
+                  {workspace.groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.nameTh} ({g.bodyName})
+                    </option>
+                  ))}
+                </select>
               )}
-            </select>
 
-            <select
-              aria-label="เลือกผู้ใช้งาน"
-              value={assignUserId}
-              onChange={(e) => setAssignUserId(e.target.value)}
-              className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
+              <select
+                aria-label="เลือกบทบาท"
+                value={assignRole}
+                onChange={(e) => setAssignRole(e.target.value as AssignmentRole)}
+                className="fm-input font-bold"
+              >
+                {assignScope === 'body' ? (
+                  <option value="body_leader">หัวหน้าบอดี้ (body_leader)</option>
+                ) : (
+                  <>
+                    <option value="care_leader">หัวหน้าแคร์ (care_leader)</option>
+                    <option value="coordinator">ผู้ประสานงาน (coordinator)</option>
+                    <option value="group_leader">ผู้นำกลุ่ม (group_leader)</option>
+                  </>
+                )}
+              </select>
+
+              <select
+                aria-label="เลือกผู้ใช้งาน"
+                value={assignUserId}
+                onChange={(e) => setAssignUserId(e.target.value)}
+                className="fm-input font-bold"
+              >
+                {workspace.governanceUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName} [{u.isUsable ? 'พร้อมใช้งาน' : u.status}]
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              disabled={busy || !assignUserId}
+              onClick={() =>
+                runOrgAction(
+                  {
+                    action: 'assign_role',
+                    userId: assignUserId,
+                    scopeType: assignScope,
+                    bodyId: assignScope === 'body' ? assignBodyId : null,
+                    groupId: assignScope === 'group' ? assignGroupId : null,
+                    roleType: assignRole,
+                    isPrimary: true,
+                  },
+                  'บันทึกการมอบหมายหน้าที่เรียบร้อยแล้ว'
+                )
+              }
+              className="fm-btn fm-btn-violet text-base"
             >
-              {workspace.governanceUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.displayName} [{u.isUsable ? 'พร้อมใช้งาน' : u.status}]
-                </option>
-              ))}
-            </select>
+              <span>บันทึกการมอบหมาย</span>
+            </button>
           </div>
-
-          <button
-            type="button"
-            disabled={busy || !assignUserId}
-            onClick={() =>
-              runOrgAction(
-                {
-                  action: 'assign_role',
-                  userId: assignUserId,
-                  scopeType: assignScope,
-                  bodyId: assignScope === 'body' ? assignBodyId : null,
-                  groupId: assignScope === 'group' ? assignGroupId : null,
-                  roleType: assignRole,
-                  isPrimary: true,
-                },
-                'บันทึกการมอบหมายหน้าที่เรียบร้อยแล้ว'
-              )
-            }
-            className="mt-4 min-h-[48px] rounded-xl bg-teal-700 px-5 py-2 text-base font-bold text-white hover:bg-teal-800 disabled:opacity-50"
-          >
-            บันทึกการมอบหมาย
-          </button>
-        </div>
+        </section>
       )}
 
       {/* Create New Group & Transfer Group Body */}
       {canManageAnyGroup && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-teal-700" aria-hidden="true" />
-              <h3 className="text-lg font-bold text-slate-900">ตั้งกลุ่มพันธกิจบ้านใหม่</h3>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="fm-panel overflow-hidden">
+            <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
+              <h2 className="font-display text-xl font-extrabold text-[#141413]">
+                ตั้งกลุ่มพันธกิจบ้านใหม่
+              </h2>
+              <UserPlus className="h-5 w-5 text-[#141413]" aria-hidden="true" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input
-                type="text"
-                value={newGroupCode}
-                onChange={(e) => setNewGroupCode(e.target.value)}
-                placeholder="รหัสกลุ่ม เช่น GRP-KHAMPHAENG"
-                className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base"
-              />
-              <input
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                placeholder="ชื่อกลุ่มพันธกิจบ้าน"
-                className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base"
-              />
-              <select
-                value={newGroupBodyId}
-                onChange={(e) => setNewGroupBodyId(e.target.value)}
-                className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-              >
-                {workspace.bodies.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nameTh}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={newGroupDistrict}
-                onChange={(e) => setNewGroupDistrict(e.target.value)}
-                placeholder="อำเภอ"
-                className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base"
-              />
-            </div>
-            <button
-              type="button"
-              disabled={busy || !newGroupCode || !newGroupName}
-              onClick={() =>
-                runOrgAction(
-                  {
-                    action: 'create_group',
-                    groupCode: newGroupCode,
-                    bodyId: newGroupBodyId,
-                    nameTh: newGroupName,
-                    district: newGroupDistrict,
-                    addressSummary: `เขต${newGroupDistrict} จ.กาฬสินธุ์`,
-                    latitude: 16.435,
-                    longitude: 103.505,
-                  },
-                  'สร้างกลุ่มพันธกิจบ้านใหม่เรียบร้อย'
-                )
-              }
-              className="min-h-[48px] rounded-xl border border-teal-700 bg-teal-50 px-4 text-base font-bold text-teal-900 hover:bg-teal-100"
-            >
-              เพิ่มกลุ่มพันธกิจบ้าน
-            </button>
-          </div>
 
-          {isAdmin && (
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <ArrowRightLeft className="h-5 w-5 text-teal-700" aria-hidden="true" />
-                <h3 className="text-lg font-bold text-slate-900">
-                  ย้ายกลุ่มข้ามบอดี้ (คงประวัติ Snapshot เดิม DEC-08)
-                </h3>
-              </div>
+            <div className="space-y-4 p-6">
               <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="text"
+                  value={newGroupCode}
+                  onChange={(e) => setNewGroupCode(e.target.value)}
+                  placeholder="รหัสกลุ่ม เช่น GRP-KHAMPHAENG"
+                  className="fm-input"
+                />
+                <input
+                  type="text"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="ชื่อกลุ่มพันธกิจบ้าน"
+                  className="fm-input"
+                />
                 <select
-                  value={transferGroupId}
-                  onChange={(e) => setTransferGroupId(e.target.value)}
-                  className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-                >
-                  {workspace.groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.nameTh}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={transferBodyId}
-                  onChange={(e) => setTransferBodyId(e.target.value)}
-                  className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
+                  value={newGroupBodyId}
+                  onChange={(e) => setNewGroupBodyId(e.target.value)}
+                  className="fm-input font-bold"
                 >
                   {workspace.bodies.map((b) => (
                     <option key={b.id} value={b.id}>
-                      → {b.nameTh}
+                      {b.nameTh}
                     </option>
                   ))}
                 </select>
                 <input
                   type="text"
-                  value={transferReason}
-                  onChange={(e) => setTransferReason(e.target.value)}
-                  placeholder="เหตุผลในการย้ายบอดี้"
-                  className="min-h-[48px] rounded-xl border border-slate-300 px-3 text-base sm:col-span-2"
+                  value={newGroupDistrict}
+                  onChange={(e) => setNewGroupDistrict(e.target.value)}
+                  placeholder="อำเภอ"
+                  className="fm-input"
                 />
               </div>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !newGroupCode || !newGroupName}
                 onClick={() =>
                   runOrgAction(
                     {
-                      action: 'transfer_group',
-                      groupId: transferGroupId,
-                      toBodyId: transferBodyId,
-                      reason: transferReason,
+                      action: 'create_group',
+                      groupCode: newGroupCode,
+                      bodyId: newGroupBodyId,
+                      nameTh: newGroupName,
+                      district: newGroupDistrict,
+                      addressSummary: `เขต${newGroupDistrict} จ.กาฬสินธุ์`,
+                      latitude: 16.435,
+                      longitude: 103.505,
                     },
-                    'ย้ายกลุ่มไปยังบอดี้ใหม่เรียบร้อย (Snapshot รอบเดิมคงอยู่)'
+                    'สร้างกลุ่มพันธกิจบ้านใหม่เรียบร้อย'
                   )
                 }
-                className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-4 text-base font-bold text-slate-800 hover:bg-slate-50"
+                className="fm-btn fm-btn-lime text-base"
               >
-                ย้ายสังกัดบอดี้
+                <span>+ เพิ่มกลุ่มพันธกิจบ้าน</span>
               </button>
             </div>
+          </section>
+
+          {isAdmin && (
+            <section className="fm-panel overflow-hidden">
+              <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#DBEAFE] px-6 py-4">
+                <h2 className="font-display text-xl font-extrabold text-[#141413]">
+                  ย้ายกลุ่มข้ามบอดี้ (คงประวัติรายงานเดิมไว้ครบ)
+                </h2>
+                <ArrowRightLeft className="h-5 w-5 text-[#141413]" aria-hidden="true" />
+              </div>
+
+              <div className="space-y-4 p-6">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <select
+                    value={transferGroupId}
+                    onChange={(e) => setTransferGroupId(e.target.value)}
+                    className="fm-input font-bold"
+                  >
+                    {workspace.groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.nameTh}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={transferBodyId}
+                    onChange={(e) => setTransferBodyId(e.target.value)}
+                    className="fm-input font-bold"
+                  >
+                    {workspace.bodies.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        → {b.nameTh}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={transferReason}
+                    onChange={(e) => setTransferReason(e.target.value)}
+                    placeholder="เหตุผลในการย้ายบอดี้"
+                    className="fm-input sm:col-span-2"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    runOrgAction(
+                      {
+                        action: 'transfer_group',
+                        groupId: transferGroupId,
+                        toBodyId: transferBodyId,
+                        reason: transferReason,
+                      },
+                      'ย้ายกลุ่มไปยังบอดี้ใหม่เรียบร้อย (Snapshot รอบเดิมคงอยู่)'
+                    )
+                  }
+                  className="fm-btn fm-btn-paper text-base"
+                >
+                  <span>ยืนยันย้ายสังกัดบอดี้</span>
+                </button>
+              </div>
+            </section>
           )}
         </div>
       )}
 
       {/* Users Lifecycle + Security Audit Logs (Admin only) */}
       {isAdmin && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="mb-3 text-xl font-bold text-slate-900">
-              จัดการสถานะบัญชีผู้ใช้ (isUsableAccount)
-            </h3>
-            <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="fm-panel overflow-hidden">
+            <div className="border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
+              <h2 className="font-display text-xl font-extrabold text-[#141413]">
+                จัดการสถานะบัญชีผู้ใช้
+              </h2>
+            </div>
+
+            <div className="max-h-[380px] divide-y-2 divide-[#141413] overflow-y-auto">
               {workspace.governanceUsers.map((u) => (
                 <div
                   key={u.id}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 p-3"
+                  className="flex items-center justify-between gap-3 bg-white px-6 py-3.5"
                 >
                   <div>
-                    <div className="text-base font-bold text-slate-900">{u.displayName}</div>
-                    <div className="text-xs text-slate-600">
-                      {u.username} · {u.systemRole} · สถานะ: {u.status}
+                    <div className="text-base font-extrabold text-[#141413]">
+                      {u.displayName}
+                    </div>
+                    <div className="font-mono text-xs font-bold text-[#27272A]">
+                      @{u.username} · {u.systemRole} · {u.status}
                     </div>
                   </div>
                   {u.id !== actor.user.id && (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() =>
-                        runOrgAction(
+                      onClick={() => {
+                        const key = `user:${u.id}`;
+                        if (confirmKey !== key) {
+                          setConfirmKey(key);
+                          return;
+                        }
+                        setConfirmKey(null);
+                        void runOrgAction(
                           {
                             action: 'update_user_status',
                             targetUserId: u.id,
@@ -417,46 +455,53 @@ export function GovernanceTab({
                             reason: 'ปรับสถานะโดยผู้ดูแลระบบ',
                           },
                           `อัปเดตสถานะบัญชี ${u.username} แล้ว`
-                        )
-                      }
-                      className={`min-h-[40px] rounded-lg px-3 text-sm font-bold ${
-                        u.status === 'active'
-                          ? 'border border-rose-300 bg-rose-50 text-rose-800'
-                          : 'bg-emerald-700 text-white'
+                        );
+                      }}
+                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-sm ${
+                        confirmKey === `user:${u.id}`
+                          ? 'bg-[var(--fm-coral)] text-[var(--fm-paper)]'
+                          : u.status === 'active'
+                            ? 'bg-[#FFE4E6] text-[#881337]'
+                            : 'fm-btn-lime'
                       }`}
                     >
-                      {u.status === 'active' ? 'ระงับบัญชี' : 'เปิดใช้งาน'}
+                      {confirmKey === `user:${u.id}`
+                        ? 'กดซ้ำเพื่อยืนยัน'
+                        : u.status === 'active'
+                          ? 'ระงับบัญชี'
+                          : 'เปิดใช้งาน'}
                     </button>
                   )}
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-teal-700" aria-hidden="true" />
-              <h3 className="text-xl font-bold text-slate-900">
+          <section className="fm-panel overflow-hidden">
+            <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#141413] px-6 py-4 text-[#F0F4F8]">
+              <h2 className="font-display text-xl font-extrabold text-[#F0F4F8]">
                 บันทึกเหตุการณ์ความปลอดภัย (Append-Only Audit Log)
-              </h3>
+              </h2>
+              <ShieldCheck className="h-5 w-5 text-[#C8FF00]" aria-hidden="true" />
             </div>
-            <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1 font-mono text-xs">
+
+            <div className="max-h-[380px] divide-y-2 divide-[#141413] overflow-y-auto font-mono text-xs">
               {workspace.securityLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-800"
-                >
+                <div key={log.id} className="bg-white px-6 py-3 text-[#141413]">
                   <div className="font-bold">
-                    [{log.outcome}] {log.action} · {log.targetType}
+                    <span className="rounded bg-[#C8FF00] px-1.5 py-0.5 text-[#141413]">
+                      {log.outcome}
+                    </span>{' '}
+                    {log.action} · {log.targetType}
                   </div>
-                  <div className="text-slate-600">
+                  <div className="mt-1 font-medium text-[#27272A]">
                     {new Date(log.createdAt).toLocaleString('th-TH')}{' '}
                     {log.reason ? `| ${log.reason}` : ''}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         </div>
       )}
     </div>

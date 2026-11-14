@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarCheck2, FileText, Lock, Sparkles } from 'lucide-react';
+import { Check, Copy, FileText, Lock, Sparkles } from 'lucide-react';
 import { apiRequest } from '@/lib/api-client';
 import type { WorkspacePayload } from '@/lib/types';
 
@@ -17,6 +17,7 @@ export function MeetingBriefTab({
   );
   const [generating, setGenerating] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const brief =
     workspace.briefs.find((b) => b.id === selectedBriefId) || workspace.briefs[0];
@@ -70,17 +71,33 @@ export function MeetingBriefTab({
     ? (s.section10ActionDecisions as string[])
     : [];
 
+  async function handleCopySummary() {
+    if (!brief) return;
+    const text = [
+      `⚡ สรุปประชุมผู้นำพันธกิจบ้าน จ.กาฬสินธุ์ (${brief.periodKey})`,
+      `• ส่งรายงาน: ${subHealth.submitted ?? 0}/${subHealth.expected ?? 0} (อนุมัติ ${subHealth.approved ?? 0})`,
+      `• ผู้เข้าร่วมรวม: ${attTrend.periodAttendance ?? 0} ท่าน (ผู้เยี่ยมใหม่ ${attTrend.newVisitors ?? 0})`,
+      `• ข้อเสนอตัดสินใจ: ${actionDecisions.join(' | ') || '-'}`,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setFeedback('คัดลอกข้อความไม่สำเร็จ');
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <section className="fm-panel-ink flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-teal-800">
-            <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
-            <span>สรุปประชุมผู้บริหารทุกวันอาทิตย์ 20:30 น. (DEC-01)</span>
-          </div>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900">
-            รายงานสรุป 10 หัวข้อสำหรับผู้นำและศิษยาภิบาล
-          </h2>
+          <h1 className="font-display text-3xl font-extrabold text-[#F0F4F8]">
+            สรุปประชุมผู้นำวันอาทิตย์ 20:30 น. (10 หัวข้อ)
+          </h1>
+          <p className="mt-1.5 text-base font-medium text-[#E2E8F0]">
+            บันทึกสรุปประจำสัปดาห์สำหรับผู้นำและศิษยาภิบาล (ซ่อนข้อมูลส่วนตัวรายบุคคล)
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -89,14 +106,29 @@ export function MeetingBriefTab({
               aria-label="เลือกฉบับสรุปประชุม"
               value={brief?.id ?? ''}
               onChange={(e) => setSelectedBriefId(e.target.value)}
-              className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-4 py-2 text-base font-medium text-slate-900"
+              className="min-h-[48px] rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-4 py-2 text-base font-bold text-[#F0F4F8]"
             >
               {workspace.briefs.map((b) => (
-                <option key={b.id} value={b.id}>
+                <option key={b.id} value={b.id} className="bg-[#141413] text-[#F0F4F8]">
                   สัปดาห์ {b.periodKey} ({b.startDate})
                 </option>
               ))}
             </select>
+          )}
+
+          {brief && (
+            <button
+              type="button"
+              onClick={handleCopySummary}
+              className="fm-btn fm-btn-paper text-sm"
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-[#047857]" aria-hidden="true" />
+              ) : (
+                <Copy className="h-4 w-4" aria-hidden="true" />
+              )}
+              <span>{copied ? 'คัดลอกเข้า LINE แล้ว!' : 'คัดลอกส่งแชตผู้นำ'}</span>
+            </button>
           )}
 
           {canGenerate && (
@@ -104,73 +136,79 @@ export function MeetingBriefTab({
               type="button"
               disabled={generating}
               onClick={handleGenerateCurrentBrief}
-              className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-base font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60"
+              className="fm-btn fm-btn-lime text-base"
             >
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              <Sparkles className="h-5 w-5" aria-hidden="true" />
               <span>
                 {generating
-                  ? 'กำลังบันทึก...'
-                  : `สร้างสรุปสัปดาห์ ${workspace.overview.selectedPeriod.periodKey}`}
+                  ? 'กำลังบันทึก…'
+                  : `ออกรายงานสรุป ${workspace.overview.selectedPeriod.periodKey}`}
               </span>
             </button>
           )}
         </div>
-      </div>
+      </section>
 
       {feedback && (
-        <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-base font-medium text-teal-900">
+        <div className="fm-panel bg-[#C8FF00] p-4 text-base font-extrabold text-[#141413]">
           {feedback}
         </div>
       )}
 
       {!brief ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-lg text-slate-600">
-          <FileText className="mx-auto mb-3 h-10 w-10 text-slate-400" aria-hidden="true" />
+        <div className="fm-panel p-8 text-center text-lg font-bold text-[#27272A]">
+          <FileText className="mx-auto mb-3 h-10 w-10 text-[#141413]" aria-hidden="true" />
           <p>ยังไม่มีเอกสารสรุปประชุมสำหรับบทบาทของคุณหรือรอบที่เลือก</p>
         </div>
       ) : (
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-4">
+        <section className="fm-panel overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
             <div>
-              <h3 className="text-xl font-bold text-slate-900">
-                1. ภาพรวม: {String(s.section1Overview ?? brief.periodKey)}
-              </h3>
-              <p className="text-sm text-slate-600">
+              <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+                หัวข้อที่ 1 · ภาพรวม: {String(s.section1Overview ?? brief.periodKey)}
+              </h2>
+              <p className="font-mono text-sm font-bold text-[#27272A]">
                 สร้างเมื่อ {new Date(brief.generatedAt).toLocaleString('th-TH')}
               </p>
             </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-900">
+            <span className="fm-sticker bg-[#C8FF00] text-[#141413]">
               <Lock className="h-4 w-4" aria-hidden="true" />
-              <span>บันทึกถาวรแก้ไขไม่ได้ (Immutable Snapshot)</span>
+              <span>บันทึกถาวรแล้ว</span>
             </span>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">2. สถานะการส่งรายงาน</h4>
-              <p className="tabular-nums mt-2 text-base text-slate-700">
-                คาดหวัง {subHealth.expected ?? 0} · ส่งแล้ว {subHealth.submitted ?? 0} · อนุมัติแล้ว{' '}
+          <div className="grid divide-y-2 divide-[#141413] md:grid-cols-2 md:divide-y-0">
+            <div className="border-b-2 border-[#141413] bg-white p-5 md:border-r-2">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 2 · ภาพรวมการส่งรายงาน
+              </h3>
+              <p className="tabular-nums mt-2 font-mono text-base font-bold text-[#27272A]">
+                ต้องส่ง {subHealth.expected ?? 0} · ส่งแล้ว {subHealth.submitted ?? 0} · อนุมัติแล้ว{' '}
                 {subHealth.approved ?? 0} · ค้างส่ง {subHealth.missing ?? 0}
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">3. สถิติผู้เข้าร่วมประจำสัปดาห์</h4>
-              <p className="tabular-nums mt-2 text-base text-slate-700">
+            <div className="border-b-2 border-[#141413] bg-[#DBEAFE] p-5">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 3 · สถิติผู้เข้าร่วมประจำสัปดาห์
+              </h3>
+              <p className="tabular-nums mt-2 font-mono text-base font-bold text-[#141413]">
                 ผู้เข้าร่วมรวม {attTrend.periodAttendance ?? 0} ท่าน · ผู้เยี่ยมใหม่{' '}
                 {attTrend.newVisitors ?? 0} · กลับมาเยี่ยม {attTrend.returningVisitors ?? 0}
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
-              <h4 className="text-base font-bold text-slate-900">4. สรุปแยกตามบอดี้</h4>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="border-b-2 border-[#141413] bg-[#F0F4F8] p-5 md:col-span-2">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 4 · สรุปแยกตามบอดี้พันธกิจ
+              </h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {bodyRows.map((row, idx) => (
                   <div
                     key={idx}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+                    className="rounded-xl border-2 border-[#141413] bg-white px-4 py-3 text-base font-bold text-[#141413]"
                   >
-                    <span className="font-semibold">{String(row.bodyName)}</span>: กลุ่ม{' '}
+                    <span className="font-extrabold">{String(row.bodyName)}</span>: กลุ่ม{' '}
                     {String(row.activeGroups)} · อนุมัติ {String(row.approved)} · ผู้เข้าร่วม{' '}
                     {String(row.attendance)}
                   </div>
@@ -178,9 +216,11 @@ export function MeetingBriefTab({
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">5. กลุ่มที่ส่งช้าหรือยังไม่ส่ง</h4>
-              <ul className="mt-2 list-disc pl-5 text-sm text-slate-700">
+            <div className="border-b-2 border-[#141413] bg-white p-5 md:border-r-2">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 5 · กลุ่มที่ส่งช้าหรือยังไม่ส่ง
+              </h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-base font-medium text-[#27272A]">
                 {lateMissing.length > 0 ? (
                   lateMissing.map((item, i) => <li key={i}>{item}</li>)
                 ) : (
@@ -189,28 +229,34 @@ export function MeetingBriefTab({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">6. รายการติดขัด / Escalation</h4>
-              <ul className="mt-2 list-disc pl-5 text-sm text-rose-800">
+            <div className="border-b-2 border-[#141413] bg-[#FFE4E6] p-5">
+              <h3 className="font-display text-lg font-extrabold text-[#881337]">
+                หัวข้อที่ 6 · รายการติดปัญหาส่งต่อ
+              </h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-base font-bold text-[#881337]">
                 {blockedList.length > 0 ? (
                   blockedList.map((item, i) => <li key={i}>{item}</li>)
                 ) : (
-                  <li className="text-slate-700">ไม่มีรายการติดขัด</li>
+                  <li>ไม่มีรายการติดขัด</li>
                 )}
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">7. สรุปผู้เยี่ยมใหม่</h4>
-              <p className="mt-2 text-sm text-slate-700">
+            <div className="border-b-2 border-[#141413] bg-white p-5 md:border-r-2">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 7 · สรุปผู้เยี่ยมใหม่
+              </h3>
+              <p className="mt-2 text-base font-medium text-[#27272A]">
                 ผู้เยี่ยมใหม่ {visitorSummary.totalNewVisitors ?? 0} ท่าน · กลับมาเยี่ยม{' '}
-                {visitorSummary.returningVisitors ?? 0} ท่าน (ปฏิบัติตาม DEC-06 ไม่เปิดเผย PII รายบุคคล)
+                {visitorSummary.returningVisitors ?? 0} ท่าน (ไม่เปิดเผยชื่อและเบอร์โทรรายบุคคล)
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">8. งานเยี่ยมติดตามที่เปิดอยู่</h4>
-              <ul className="mt-2 list-disc pl-5 text-sm text-slate-700">
+            <div className="border-b-2 border-[#141413] bg-white p-5">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 8 · งานเยี่ยมติดตามที่เปิดอยู่
+              </h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-base font-medium text-[#27272A]">
                 {openFollowUps.length > 0 ? (
                   openFollowUps.map((f, i) => <li key={i}>{f}</li>)
                 ) : (
@@ -219,25 +265,29 @@ export function MeetingBriefTab({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-base font-bold text-slate-900">9. หัวข้ออธิษฐานและการอภิบาล</h4>
-              <ul className="mt-2 list-disc pl-5 text-sm text-slate-700">
+            <div className="bg-white p-5 md:border-r-2 md:border-[#141413]">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 9 · หัวข้ออธิษฐานและการอภิบาล
+              </h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-base font-medium text-[#27272A]">
                 {prayerThemes.map((t, i) => (
                   <li key={i}>{t}</li>
                 ))}
               </ul>
             </div>
 
-            <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
-              <h4 className="text-base font-bold text-teal-950">10. ข้อเสนอเพื่อการตัดสินใจ</h4>
-              <ul className="mt-2 list-disc pl-5 text-sm font-medium text-teal-900">
+            <div className="bg-[#C8FF00] p-5">
+              <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                หัวข้อที่ 10 · ข้อเสนอเพื่อการตัดสินใจในที่ประชุม
+              </h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-base font-extrabold text-[#141413]">
                 {actionDecisions.map((d, i) => (
                   <li key={i}>{d}</li>
                 ))}
               </ul>
             </div>
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

@@ -3,14 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Check,
+  ArrowLeft,
+  ArrowRight,
   CloudOff,
+  Minus,
+  Plus,
   Save,
   Send,
+  Sparkles,
   UserPlus,
   Wifi,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api-client';
+import { normalizeThaiPhone } from '@/lib/phone';
 import {
   clearOfflineDraft,
   loadOfflineDraft,
@@ -18,6 +23,18 @@ import {
 } from '@/lib/offline-drafts';
 import type { WorkspacePayload } from '@/lib/types';
 import { StatusBadge } from './StatusBadge';
+
+const QUICK_SUMMARY_CHIPS = [
+  'นมัสการเปี่ยมพลัง สมาชิกมีส่วนร่วมครบ',
+  'หนุนใจเยาวชนคนรุ่นใหม่และแบ่งปันพระวจนะ',
+  'ฉลองคำพยานชีวิตและต้อนรับผู้เยี่ยมใหม่',
+];
+
+const QUICK_PRAYER_CHIPS = [
+  'สุขภาพครอบครัวผู้สูงอายุในชุมชน',
+  'การเรียนและการสอบของเยาวชน Gen Z / Alpha',
+  'การงานและเศรษฐกิจของครอบครัวสมาชิก',
+];
 
 export function WeeklyReportTab({
   workspace,
@@ -80,7 +97,9 @@ export function WeeklyReportTab({
   const [blockedReason, setBlockedReason] = useState<string | null>(null);
   const [version, setVersion] = useState<number | undefined>(undefined);
 
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'offline_queued' | 'error'>('idle');
+  const [saveState, setSaveState] = useState<
+    'idle' | 'saving' | 'saved' | 'offline_queued' | 'error'
+  >('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -199,7 +218,7 @@ export function WeeklyReportTab({
         if (typeof p.summaryNotes === 'string') setSummaryNotes(p.summaryNotes);
         if (typeof p.totalAttendees === 'number') setTotalAttendees(p.totalAttendees);
         setSaveState('offline_queued');
-        setStatusMessage('กู้คืนฉบับร่างค้างส่งจากหน่วยความจำออฟไลน์ในเครื่องเรียบร้อย (CD-01)');
+        setStatusMessage('กู้คืนฉบับร่างค้างส่งจากในเครื่องเรียบร้อยแล้ว');
       } else {
         setSaveState('idle');
       }
@@ -288,8 +307,8 @@ export function WeeklyReportTab({
       setSaveState('offline_queued');
       setStatusMessage(
         err instanceof Error
-          ? `${err.message} — ระบบสำรองฉบับร่างลงเครื่องออฟไลน์ไว้ให้แล้ว (CD-01)`
-          : 'สำรองฉบับร่างในเครื่องแล้ว จะซิงก์เมื่อออนไลน์'
+          ? `${err.message} — ระบบสำรองฉบับร่างไว้ในเครื่องให้แล้ว`
+          : 'สำรองฉบับร่างในเครื่องแล้ว จะส่งเข้าระบบเมื่อมีเน็ต'
       );
     }
   }
@@ -302,7 +321,12 @@ export function WeeklyReportTab({
 
     try {
       const res = await apiRequest<{
-        report: { version: number; status: string; isBlocked: boolean; blockedReason: string | null };
+        report: {
+          version: number;
+          status: string;
+          isBlocked: boolean;
+          blockedReason: string | null;
+        };
       }>('/api/v1/reports', {
         method: 'POST',
         idempotencyKey:
@@ -323,7 +347,7 @@ export function WeeklyReportTab({
       await clearOfflineDraft(period.id, selectedGroupId);
       setStatusMessage(
         res.report.isBlocked
-          ? `ส่งรายงานแล้ว แต่ถูกติดสถานะ Blocked (${res.report.blockedReason}) ระบบแจ้งเตือนผู้ดูแลระบบแล้ว`
+          ? `ส่งรายงานแล้ว แต่ติดปัญหาส่งต่อ (${res.report.blockedReason}) ระบบแจ้งเตือนผู้ดูแลระบบแล้ว`
           : 'ส่งรายงานประจำสัปดาห์เรียบร้อยแล้ว! ขอบคุณที่ร่วมรับใช้'
       );
       await onRefresh();
@@ -346,7 +370,7 @@ export function WeeklyReportTab({
           groupId: selectedGroupId,
           fullName: visitorName,
           nickname: visitorNickname || null,
-          phoneE164: visitorPhone || null,
+          phoneE164: normalizeThaiPhone(visitorPhone),
           consentForContact: visitorConsent,
           visitType: 'new_visitor',
           visitedOn: meetingDate,
@@ -368,139 +392,181 @@ export function WeeklyReportTab({
     }
   }
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-teal-800">
-              ส่งรายงานประจำสัปดาห์ {period.periodKey}
-            </p>
-            <h2 className="text-2xl font-bold text-slate-900">
-              {selectedGroup?.nameTh ?? 'เลือกกลุ่มพันธกิจบ้าน'}
-            </h2>
-          </div>
+  const counterRows = [
+    {
+      label: 'ผู้เข้าร่วมทั้งหมด',
+      value: totalAttendees,
+      setter: setTotalAttendees,
+      tone: 'bg-[#C8FF00]',
+    },
+    {
+      label: 'สมาชิกประจำที่มา',
+      value: memberAttendees,
+      setter: (v: number) => {
+        const diff = v - memberAttendees;
+        setMemberAttendees(v);
+        setTotalAttendees((t) => Math.max(0, t + diff));
+      },
+      tone: 'bg-[var(--fm-paper)]',
+    },
+    {
+      label: 'ผู้เยี่ยมใหม่ (คน)',
+      value: newVisitorsCount,
+      setter: (v: number) => {
+        const diff = v - newVisitorsCount;
+        setNewVisitorsCount(v);
+        setTotalAttendees((t) => Math.max(0, t + diff));
+      },
+      tone: 'bg-[#DBEAFE]',
+    },
+    {
+      label: 'ผู้กลับมาเยี่ยม (คน)',
+      value: returningVisitorsCount,
+      setter: (v: number) => {
+        const diff = v - returningVisitorsCount;
+        setReturningVisitorsCount(v);
+        setTotalAttendees((t) => Math.max(0, t + diff));
+      },
+      tone: 'bg-[#FEF3C7]',
+    },
+  ];
 
-          <div className="flex items-center gap-2">
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      {/* Studio Group Header */}
+      <section className="fm-panel overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#141413] px-6 py-4 text-[#F0F4F8]">
+          <h1 className="font-display text-2xl font-extrabold sm:text-3xl">
+            {selectedGroup?.nameTh ?? 'เลือกกลุ่มพันธกิจบ้าน'} · รอบ {period.periodKey}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-2">
             {isOnline ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+              <span className="fm-sticker bg-[#C8FF00] text-[#141413]">
                 <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
-                ออนไลน์
+                <span>เชื่อมต่อเน็ตปกติ</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
+              <span className="fm-sticker bg-[#FFB703] text-[#141413]">
                 <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />
-                ออฟไลน์
+                <span>ไม่มีเน็ต (บันทึกลงเครื่องไว้ก่อนได้)</span>
               </span>
             )}
             <StatusBadge status={reportStatus} isBlocked={isBlocked} />
           </div>
         </div>
 
-        <div className="mt-4">
-          <label className="mb-1.5 block text-base font-semibold text-slate-800">
-            เลือกกลุ่มพันธกิจบ้านของคุณ
-          </label>
-          <select
-            aria-label="เลือกกลุ่มพันธกิจบ้าน"
-            value={selectedGroupId}
-            onChange={(e) => setSelectedGroupId(e.target.value)}
-            className="min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-lg font-medium text-slate-900"
-          >
-            {(editableGroups.length > 0 ? editableGroups : workspace.groups).map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nameTh} ({g.district}) — [{g.currentReport.status}]
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {!canEditSelected && (
-          <div className="mt-4 rounded-xl border border-slate-300 bg-slate-50 p-4 text-base text-slate-700">
-            คุณกำลังดูกลุ่มนี้ในสิทธิ์ผู้ตรวจทาน/ผู้บริหาร (เฉพาะหัวหน้ากลุ่มของกลุ่มนี้เท่านั้นที่แก้ไขหรือบันทึกร่างได้ · FR-07.5)
+        <div className="space-y-4 p-6">
+          <div>
+            <label
+              htmlFor="fm-group-select"
+              className="mb-1.5 block text-base font-extrabold text-[#141413]"
+            >
+              เลือกกลุ่มพันธกิจบ้านของคุณ
+            </label>
+            <select
+              id="fm-group-select"
+              aria-label="เลือกกลุ่มพันธกิจบ้าน"
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="fm-input w-full text-lg font-extrabold"
+            >
+              {(editableGroups.length > 0 ? editableGroups : workspace.groups).map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nameTh} ({g.district}) — [{g.currentReport.status}]
+                </option>
+              ))}
+            </select>
           </div>
-        )}
 
-        {revisionReason && (
-          <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-            <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-amber-700" aria-hidden="true" />
-            <div>
-              <p className="text-base font-bold">คำแนะนำให้แก้ไขเพิ่มเติมก่อนส่งอีกครั้ง</p>
-              <p className="mt-1 text-base">{revisionReason}</p>
+          {!canEditSelected && (
+            <div className="border-t-2 border-dashed border-[#141413]/30 pt-3 text-base font-bold text-[#1D4ED8]">
+              คุณกำลังดูกลุ่มนี้ในสิทธิ์ผู้ตรวจทาน/ผู้บริหาร (เฉพาะผู้นำกลุ่มของกลุ่มนี้เท่านั้นที่แก้ไขหรือบันทึกร่างได้)
             </div>
-          </div>
-        )}
+          )}
 
-        {isBlocked && (
-          <div className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-4 text-rose-950">
-            <p className="text-base font-bold">รายงานนี้ถูกติดสถานะ Blocked ({blockedReason})</p>
-            <p className="text-sm">ระบบส่งแจ้งเตือนผู้ดูแลระบบเพื่อมอบหมายหัวหน้าบอดี้ที่ใช้งานได้แล้ว</p>
-          </div>
-        )}
+          {revisionReason && (
+            <div className="flex items-start gap-3 rounded-xl border-2 border-[#141413] bg-[#FEF3C7] p-4 text-[#141413]">
+              <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+              <div>
+                <div className="text-base font-extrabold">คำแนะนำให้แก้ไขเพิ่มเติมก่อนส่งอีกครั้ง</div>
+                <p className="mt-1 text-base font-medium">{revisionReason}</p>
+              </div>
+            </div>
+          )}
 
-        {statusMessage && (
-          <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-4 text-base font-medium text-teal-900">
-            {statusMessage}
-          </div>
-        )}
-      </div>
+          {isBlocked && (
+            <div className="rounded-xl border-2 border-[#141413] bg-[#FFE4E6] p-4 text-[#881337]">
+              <div className="text-base font-extrabold">
+                รายงานนี้ติดปัญหาส่งต่อ ({blockedReason})
+              </div>
+              <p className="mt-1 text-sm font-bold">
+                ระบบแจ้งเตือนผู้ดูแลระบบเพื่อมอบหมายหัวหน้าบอดี้ที่ใช้งานได้แล้ว
+              </p>
+            </div>
+          )}
 
-      {/* 3-Step Indicator (Elderly-accessible large touch tabs) */}
-      <div className="grid grid-cols-3 gap-2">
+          {statusMessage && (
+            <div className="rounded-xl border-2 border-[#141413] bg-[#C8FF00] p-4 text-base font-extrabold text-[#141413]">
+              {statusMessage}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Tactile 3-Step Switcher */}
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { num: 1 as const, label: '1. การประชุม' },
-          { num: 2 as const, label: '2. เช็คชื่อ & ผู้เยี่ยม' },
-          { num: 3 as const, label: '3. สรุป & ส่ง' },
+          { num: 1 as const, label: 'ขั้นที่ 1 · การประชุม' },
+          { num: 2 as const, label: 'ขั้นที่ 2 · เช็คชื่อ & ยอด' },
+          { num: 3 as const, label: 'ขั้นที่ 3 · คำอธิษฐาน & ส่ง' },
         ].map((item) => (
           <button
             key={item.num}
             type="button"
             onClick={() => setStep(item.num)}
-            className={`min-h-[52px] rounded-xl border px-3 py-2 text-base font-bold transition ${
-              step === item.num
-                ? 'border-teal-700 bg-teal-700 text-white shadow-sm'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            className={`fm-btn min-h-[54px] text-base ${
+              step === item.num ? 'fm-btn-lime' : 'fm-btn-paper'
             }`}
           >
-            {item.label}
+            <span>{item.label}</span>
           </button>
         ))}
       </div>
 
+      {/* STEP 1: Meeting Status */}
       {step === 1 && (
-        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-900">ขั้นตอนที่ 1: สถานะการจัดประชุมสัปดาห์นี้</h3>
+        <section className="fm-panel space-y-5 p-6">
+          <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+            ขั้นตอนที่ 1: สัปดาห์นี้กลุ่มของคุณจัดประชุมหรือไม่?
+          </h2>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <button
               type="button"
               disabled={!canEditSelected || isLocked}
               onClick={() => setMeetingHeld(true)}
-              className={`min-h-[56px] rounded-xl border-2 px-4 py-3 text-lg font-bold transition ${
-                meetingHeld
-                  ? 'border-teal-700 bg-teal-50 text-teal-900'
-                  : 'border-slate-200 bg-white text-slate-700'
+              className={`fm-btn min-h-[64px] text-lg ${
+                meetingHeld ? 'fm-btn-lime' : 'fm-btn-paper'
               }`}
             >
-              จัดประชุมกลุ่มตามปกติ
+              <span>จัดประชุมกลุ่มตามปกติ</span>
             </button>
             <button
               type="button"
               disabled={!canEditSelected || isLocked}
               onClick={() => setMeetingHeld(false)}
-              className={`min-h-[56px] rounded-xl border-2 px-4 py-3 text-lg font-bold transition ${
-                !meetingHeld
-                  ? 'border-amber-600 bg-amber-50 text-amber-950'
-                  : 'border-slate-200 bg-white text-slate-700'
+              className={`fm-btn min-h-[64px] text-lg ${
+                !meetingHeld ? 'bg-[#FFB703] text-[#141413]' : 'fm-btn-paper'
               }`}
             >
-              งดประชุมสัปดาห์นี้
+              <span>งดประชุมสัปดาห์นี้</span>
             </button>
           </div>
 
           {!meetingHeld ? (
             <div>
-              <label className="mb-1.5 block text-base font-semibold text-slate-800">
+              <label className="mb-1.5 block text-base font-extrabold text-[#141413]">
                 ระบุเหตุผลที่งดประชุม *
               </label>
               <textarea
@@ -508,273 +574,357 @@ export function WeeklyReportTab({
                 disabled={!canEditSelected || isLocked}
                 value={notHeldReason}
                 onChange={(e) => setNotHeldReason(e.target.value)}
-                placeholder="เช่น สมาชิกส่วนใหญ่ติดภารกิจงานประเพณีชุมชน / ร่วมงานรวมคริสตจักร"
-                className="w-full rounded-xl border border-slate-300 p-3 text-lg text-slate-900"
+                placeholder="เช่น สมาชิกร่วมงานบุญประเพณีชุมชน / ร่วมนมัสการรวมระดับบอดี้"
+                className="fm-input w-full text-lg"
               />
             </div>
           ) : (
             <div>
-              <label className="mb-1.5 block text-base font-semibold text-slate-800">
-                วันที่พบปะประชุม
+              <label className="mb-1.5 block text-base font-extrabold text-[#141413]">
+                วันที่พบปะกลุ่มพันธกิจบ้าน
               </label>
               <input
                 type="date"
                 disabled={!canEditSelected || isLocked}
                 value={meetingDate}
                 onChange={(e) => setMeetingDate(e.target.value)}
-                className="min-h-[48px] w-full rounded-xl border border-slate-300 px-4 py-2 text-lg text-slate-900"
+                className="fm-input w-full text-lg font-bold"
               />
             </div>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex justify-end border-t-2 border-[#141413] pt-4">
             <button
               type="button"
-              onClick={() => setStep(2)}
-              className="min-h-[52px] rounded-xl bg-teal-700 px-6 py-3 text-lg font-bold text-white hover:bg-teal-800"
+              onClick={() => {
+                if (!meetingHeld && !notHeldReason.trim()) {
+                  setStatusMessage('กรุณาระบุเหตุผลที่งดประชุมก่อนดำเนินการต่อ');
+                  return;
+                }
+                setStatusMessage(null);
+                setStep(meetingHeld ? 2 : 3);
+              }}
+              className="fm-btn fm-btn-violet min-h-[54px] whitespace-nowrap px-6 text-lg"
             >
-              ถัดไป: เช็คชื่อและผู้เยี่ยม
+              <span>{meetingHeld ? 'ถัดไป: เช็คชื่อและผู้เยี่ยม' : 'ถัดไป: สรุปและส่งรายงาน'}</span>
+              <ArrowRight className="h-5 w-5" aria-hidden="true" />
             </button>
           </div>
-        </div>
+        </section>
       )}
 
+      {/* STEP 2: Attendance & Tactile Steppers */}
       {step === 2 && (
-        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-xl font-bold text-slate-900">
-              ขั้นตอนที่ 2: เช็คชื่อสมาชิกและบันทึกผู้เยี่ยมใหม่
-            </h3>
+        <section className="fm-panel overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
+            <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+              ขั้นตอนที่ 2: เช็คชื่อสมาชิกและแตะนับผู้เยี่ยม
+            </h2>
             {canEditSelected && (
               <button
                 type="button"
                 onClick={() => setShowVisitorForm((v) => !v)}
-                className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-teal-700 bg-teal-50 px-4 py-2 text-base font-bold text-teal-900 hover:bg-teal-100"
+                className="fm-btn fm-btn-lime text-base"
               >
                 <UserPlus className="h-5 w-5" aria-hidden="true" />
-                <span>ลงทะเบียนผู้เยี่ยมใหม่ (PDPA)</span>
+                <span>+ ลงทะเบียนผู้เยี่ยมใหม่</span>
               </button>
             )}
           </div>
 
-          {showVisitorForm && (
-            <form
-              onSubmit={handleQuickVisitorSubmit}
-              className="space-y-3 rounded-xl border border-teal-200 bg-teal-50/70 p-4"
-            >
-              <h4 className="text-base font-bold text-teal-950">
-                เพิ่มผู้เยี่ยมใหม่ในกลุ่ม (ปฏิบัติตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล DEC-10)
-              </h4>
-              {visitorError && (
-                <div className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-900">
-                  {visitorError}
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input
-                  type="text"
-                  required
-                  value={visitorName}
-                  onChange={(e) => setVisitorName(e.target.value)}
-                  placeholder="ชื่อ-นามสกุลผู้เยี่ยม *"
-                  className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-                />
-                <input
-                  type="text"
-                  value={visitorNickname}
-                  onChange={(e) => setVisitorNickname(e.target.value)}
-                  placeholder="ชื่อเล่น (ถ้ามี)"
-                  className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base"
-                />
-                <input
-                  type="tel"
-                  value={visitorPhone}
-                  onChange={(e) => setVisitorPhone(e.target.value)}
-                  placeholder="เบอร์โทร +66... (ต้องขอความยินยอม)"
-                  className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-3 text-base sm:col-span-2"
-                />
-              </div>
-              <label className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base">
-                <input
-                  type="checkbox"
-                  checked={visitorConsent}
-                  onChange={(e) => setVisitorConsent(e.target.checked)}
-                  className="h-5 w-5 accent-teal-700"
-                />
-                <span>
-                  ผู้เยี่ยมให้ความยินยอมเก็บข้อมูลติดต่อและรับการเยี่ยมติดตาม (PDPA DEC-10)
-                </span>
-              </label>
-              <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base text-slate-800">
-                <input
-                  type="checkbox"
-                  checked={visitorFollowUp}
-                  onChange={(e) => setVisitorFollowUp(e.target.checked)}
-                  className="h-5 w-5 accent-teal-700"
-                />
-                <span>สร้างงานเยี่ยมติดตามอัตโนมัติ (Follow-Up)</span>
-              </label>
-              <button
-                type="submit"
-                disabled={visitorBusy}
-                className="min-h-[48px] rounded-xl bg-teal-700 px-5 py-2 text-base font-bold text-white hover:bg-teal-800 disabled:opacity-60"
+          <div className="space-y-6 p-6">
+            {showVisitorForm && (
+              <form
+                onSubmit={handleQuickVisitorSubmit}
+                className="space-y-4 rounded-xl border-2 border-[#141413] bg-[#F0F4F8] p-5"
               >
-                {visitorBusy ? 'กำลังบันทึก...' : 'บันทึกผู้เยี่ยมใหม่'}
-              </button>
-            </form>
-          )}
+                <h3 className="font-display text-lg font-extrabold text-[#141413]">
+                  ลงทะเบียนผู้เยี่ยมใหม่ในกลุ่ม
+                </h3>
+                {visitorError && (
+                  <div className="rounded-lg border-2 border-[#141413] bg-[#FFE4E6] p-3 text-sm font-bold text-[#881337]">
+                    {visitorError}
+                  </div>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    required
+                    value={visitorName}
+                    onChange={(e) => setVisitorName(e.target.value)}
+                    placeholder="ชื่อ-นามสกุลผู้เยี่ยม *"
+                    className="fm-input"
+                  />
+                  <input
+                    type="text"
+                    value={visitorNickname}
+                    onChange={(e) => setVisitorNickname(e.target.value)}
+                    placeholder="ชื่อเล่น (ถ้ามี)"
+                    className="fm-input"
+                  />
+                  <input
+                    type="tel"
+                    value={visitorPhone}
+                    onChange={(e) => setVisitorPhone(e.target.value)}
+                    placeholder="เบอร์โทร เช่น 081-234-5678"
+                    className="fm-input sm:col-span-2"
+                  />
+                </div>
+                <label className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border-2 border-[#141413] bg-white px-4 py-2 text-base font-bold">
+                  <input
+                    type="checkbox"
+                    checked={visitorConsent}
+                    onChange={(e) => setVisitorConsent(e.target.checked)}
+                    className="h-5 w-5 accent-[#1D4ED8]"
+                  />
+                  <span>
+                    ผู้เยี่ยมยินยอมให้เก็บเบอร์โทรเพื่อติดต่อเยี่ยมเยียน
+                  </span>
+                </label>
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base font-bold text-[#141413]">
+                  <input
+                    type="checkbox"
+                    checked={visitorFollowUp}
+                    onChange={(e) => setVisitorFollowUp(e.target.checked)}
+                    className="h-5 w-5 accent-[#1D4ED8]"
+                  />
+                  <span>สร้างงานเยี่ยมติดตามอัตโนมัติ (Follow-Up)</span>
+                </label>
+                <button
+                  type="submit"
+                  disabled={visitorBusy}
+                  className="fm-btn fm-btn-violet text-base"
+                >
+                  <span>{visitorBusy ? 'กำลังบันทึก...' : 'บันทึกผู้เยี่ยมใหม่เข้ากลุ่ม'}</span>
+                </button>
+              </form>
+            )}
 
-          {meetingHeld && (
-            <>
-              <div className="space-y-2.5">
-                {groupMembers.map((m) => {
-                  const status = attendanceMap[m.id] ?? 'present';
-                  return (
-                    <div
-                      key={m.id}
-                      className="flex flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center"
-                    >
-                      <div className="text-lg font-semibold text-slate-900">
-                        {m.fullName}
+            {meetingHeld && (
+              <>
+                {/* Member Attendance Ledger */}
+                <div className="divide-y-2 divide-[#141413] rounded-xl border-2 border-[#141413] bg-white">
+                  {groupMembers.map((m) => {
+                    const status = attendanceMap[m.id] ?? 'present';
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex flex-col justify-between gap-3 px-4 py-3.5 sm:flex-row sm:items-center"
+                      >
+                        <div className="text-lg font-extrabold text-[#141413]">
+                          {m.fullName}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['present', 'absent', 'excused'] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              disabled={!canEditSelected || isLocked}
+                              onClick={() => handleToggleAttendance(m.id, opt)}
+                              className={`min-h-[48px] min-w-[78px] rounded-xl border-2 border-[#141413] px-3 text-base font-extrabold transition ${
+                                status === opt
+                                  ? opt === 'present'
+                                    ? 'bg-[#C8FF00] text-[#141413] shadow-[2px_2px_0px_#141413]'
+                                    : opt === 'absent'
+                                    ? 'bg-[#BE123C] text-white shadow-[2px_2px_0px_#141413]'
+                                    : 'bg-[#FFB703] text-[#141413] shadow-[2px_2px_0px_#141413]'
+                                  : 'bg-[#F0F4F8] text-[#27272A]'
+                              }`}
+                            >
+                              {opt === 'present' ? 'มา' : opt === 'absent' ? 'ขาด' : 'ลา'}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['present', 'absent', 'excused'] as const).map((opt) => (
-                          <button
-                            key={opt}
-                            type="button"
-                            disabled={!canEditSelected || isLocked}
-                            onClick={() => handleToggleAttendance(m.id, opt)}
-                            className={`min-h-[48px] min-w-[74px] rounded-xl border px-3 text-base font-bold transition ${
-                              status === opt
-                                ? opt === 'present'
-                                  ? 'border-emerald-700 bg-emerald-700 text-white'
-                                  : opt === 'absent'
-                                  ? 'border-rose-700 bg-rose-700 text-white'
-                                  : 'border-amber-600 bg-amber-600 text-white'
-                                : 'border-slate-300 bg-white text-slate-700'
-                            }`}
-                          >
-                            {opt === 'present' ? 'มา' : opt === 'absent' ? 'ขาด' : 'ลา'}
-                          </button>
-                        ))}
+                    );
+                  })}
+                </div>
+
+                {/* Tactile Counter Deck */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {counterRows.map((item) => (
+                    <div
+                      key={item.label}
+                      className={`flex items-center justify-between gap-3 rounded-xl border-2 border-[#141413] p-4 ${item.tone}`}
+                    >
+                      <div>
+                        <label className="block text-sm font-extrabold text-[#141413]">
+                          {item.label}
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          aria-label={item.label}
+                          disabled={!canEditSelected || isLocked}
+                          value={item.value}
+                          onChange={(e) => item.setter(Math.max(0, Number(e.target.value)))}
+                          className="tabular-nums mt-1 w-24 rounded-lg border-2 border-[#141413] bg-[var(--fm-paper)] px-2.5 py-1 font-mono text-2xl font-extrabold text-[#141413]"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`ลด ${item.label}`}
+                          disabled={!canEditSelected || isLocked || item.value <= 0}
+                          onClick={() => item.setter(Math.max(0, item.value - 1))}
+                          className="fm-btn fm-btn-paper min-h-[48px] min-w-[48px] p-0"
+                        >
+                          <Minus className="h-5 w-5" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`เพิ่ม ${item.label}`}
+                          disabled={!canEditSelected || isLocked}
+                          onClick={() => item.setter(item.value + 1)}
+                          className="fm-btn fm-btn-paper min-h-[48px] min-w-[48px] p-0"
+                        >
+                          <Plus className="h-5 w-5" aria-hidden="true" />
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-base font-semibold text-slate-800">
-                    จำนวนผู้เข้าร่วมทั้งหมด
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    disabled={!canEditSelected || isLocked}
-                    value={totalAttendees}
-                    onChange={(e) => setTotalAttendees(Number(e.target.value))}
-                    className="tabular-nums min-h-[48px] w-full rounded-xl border border-slate-300 px-4 text-lg font-bold"
-                  />
+                {/* Children Count & Offering Amount */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border-2 border-[#141413] bg-[var(--fm-paper)] p-4">
+                    <label
+                      htmlFor="fm-children-count"
+                      className="block text-sm font-extrabold text-[#141413]"
+                    >
+                      จำนวนเด็กที่เข้าร่วม (คน)
+                    </label>
+                    <input
+                      id="fm-children-count"
+                      type="number"
+                      min={0}
+                      disabled={!canEditSelected || isLocked}
+                      value={childrenCount}
+                      onChange={(e) => setChildrenCount(Math.max(0, Number(e.target.value)))}
+                      className="fm-input tabular-nums mt-1.5 w-full font-mono text-xl font-extrabold"
+                    />
+                  </div>
+                  <div className="rounded-xl border-2 border-[#141413] bg-[var(--fm-paper)] p-4">
+                    <label
+                      htmlFor="fm-offering-thb"
+                      className="block text-sm font-extrabold text-[#141413]"
+                    >
+                      ยอดถวายทรัพย์ประจำสัปดาห์ (บาท)
+                    </label>
+                    <input
+                      id="fm-offering-thb"
+                      type="number"
+                      min={0}
+                      step="1"
+                      disabled={!canEditSelected || isLocked}
+                      value={offeringAmountThb}
+                      onChange={(e) => setOfferingAmountThb(e.target.value)}
+                      className="fm-input tabular-nums mt-1.5 w-full font-mono text-xl font-extrabold"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-base font-semibold text-slate-800">
-                    สมาชิกประจำ
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    disabled={!canEditSelected || isLocked}
-                    value={memberAttendees}
-                    onChange={(e) => setMemberAttendees(Number(e.target.value))}
-                    className="tabular-nums min-h-[48px] w-full rounded-xl border border-slate-300 px-4 text-lg font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-base font-semibold text-slate-800">
-                    ผู้เยี่ยมใหม่ (คน)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    disabled={!canEditSelected || isLocked}
-                    value={newVisitorsCount}
-                    onChange={(e) => setNewVisitorsCount(Number(e.target.value))}
-                    className="tabular-nums min-h-[48px] w-full rounded-xl border border-slate-300 px-4 text-lg font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-base font-semibold text-slate-800">
-                    ผู้กลับมาเยี่ยม (คน)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    disabled={!canEditSelected || isLocked}
-                    value={returningVisitorsCount}
-                    onChange={(e) => setReturningVisitorsCount(Number(e.target.value))}
-                    className="tabular-nums min-h-[48px] w-full rounded-xl border border-slate-300 px-4 text-lg font-bold"
-                  />
-                </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
 
-          <div className="flex justify-between">
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className="min-h-[52px] rounded-xl border border-slate-300 bg-white px-5 py-3 text-lg font-semibold text-slate-800"
-            >
-              ย้อนกลับ
-            </button>
-            <button
-              type="button"
-              onClick={() => setStep(3)}
-              className="min-h-[52px] rounded-xl bg-teal-700 px-6 py-3 text-lg font-bold text-white hover:bg-teal-800"
-            >
-              ถัดไป: คำอธิษฐานและส่งรายงาน
-            </button>
+            {!meetingHeld && (
+              <div className="rounded-xl border-2 border-[#141413] bg-[var(--fm-amber)] p-4 text-base font-extrabold text-[#141413]">
+                สัปดาห์นี้เลือกงดประชุม ({notHeldReason || 'ระบุเหตุผลแล้ว'}) — ไม่ต้องเช็คชื่อสมาชิก กดถัดไปเพื่อส่งรายงานได้เลย
+              </div>
+            )}
+
+            <div className="flex justify-between border-t-2 border-[#141413] pt-4">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="fm-btn fm-btn-paper min-h-[54px] px-5 text-lg"
+              >
+                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+                <span>ย้อนกลับ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="fm-btn fm-btn-violet min-h-[54px] px-6 text-lg"
+              >
+                <span>ถัดไป: คำอธิษฐานและส่งรายงาน</span>
+                <ArrowRight className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        </div>
+        </section>
       )}
 
+      {/* STEP 3: Prayer, Quick Vibe Chips & Submit */}
       {step === 3 && (
-        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-900">
-            ขั้นตอนที่ 3: บันทึกคำอธิษฐาน การดูแล และส่งรายงาน
-          </h3>
+        <section className="fm-panel space-y-5 p-6">
+          <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+            ขั้นตอนที่ 3: บันทึกคำอธิษฐาน การอภิบาล และกดส่งรายงาน
+          </h2>
 
           <div>
-            <label className="mb-1.5 block text-base font-semibold text-slate-800">
+            <label className="mb-1.5 block text-base font-extrabold text-[#141413]">
               สรุปบรรยากาศและการแบ่งปันในกลุ่ม
             </label>
+            {canEditSelected && !isLocked && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {QUICK_SUMMARY_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() =>
+                      setSummaryNotes((prev) => (prev ? `${prev} · ${chip}` : chip))
+                    }
+                    className="rounded-full border-2 border-[#141413] bg-[#E2E8F0] px-3 py-1 text-xs font-extrabold text-[#141413] transition hover:bg-[#C8FF00]"
+                  >
+                    <Sparkles className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               rows={3}
               disabled={!canEditSelected || isLocked}
               value={summaryNotes}
               onChange={(e) => setSummaryNotes(e.target.value)}
               placeholder="สรุปสิ่งดีที่เกิดขึ้นในกลุ่มสัปดาห์นี้..."
-              className="w-full rounded-xl border border-slate-300 p-3 text-lg text-slate-900"
+              className="fm-input w-full text-lg"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-base font-semibold text-slate-800">
+            <label className="mb-1.5 block text-base font-extrabold text-[#141413]">
               หัวข้ออธิษฐานและการหนุนใจ
             </label>
+            {canEditSelected && !isLocked && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {QUICK_PRAYER_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() =>
+                      setPrayerRequests((prev) => (prev ? `${prev} · ${chip}` : chip))
+                    }
+                    className="rounded-full border-2 border-[#141413] bg-[#DBEAFE] px-3 py-1 text-xs font-extrabold text-[#141413] transition hover:bg-[#C8FF00] hover:text-[#141413]"
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               rows={2}
               disabled={!canEditSelected || isLocked}
               value={prayerRequests}
               onChange={(e) => setPrayerRequests(e.target.value)}
               placeholder="เช่น อธิษฐานเผื่อสุขภาพสมาชิก..."
-              className="w-full rounded-xl border border-slate-300 p-3 text-lg text-slate-900"
+              className="fm-input w-full text-lg"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-base font-semibold text-slate-800">
+            <label className="mb-1.5 block text-base font-extrabold text-[#141413]">
               ความต้องการการเยี่ยมเยียน / การอภิบาลเร่งด่วน
             </label>
             <textarea
@@ -783,22 +933,22 @@ export function WeeklyReportTab({
               value={careNeedsNotes}
               onChange={(e) => setCareNeedsNotes(e.target.value)}
               placeholder="ระบุหากต้องการหัวหน้าแคร์หรือศิษยาภิบาลร่วมเยี่ยม..."
-              className="w-full rounded-xl border border-slate-300 p-3 text-lg text-slate-900"
+              className="fm-input w-full text-lg"
             />
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+          <div className="flex flex-col gap-3 border-t-2 border-[#141413] pt-4 sm:flex-row sm:justify-between">
             <button
               type="button"
               disabled={!canEditSelected || isLocked || saveState === 'saving'}
               onClick={handleSaveDraft}
-              className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-lg font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              className="fm-btn fm-btn-paper min-h-[56px] px-5 text-lg"
             >
               <Save className="h-5 w-5" aria-hidden="true" />
               <span>
                 {saveState === 'saving'
                   ? 'กำลังบันทึกร่าง...'
-                  : 'บันทึกร่าง (Draft ส่วนตัว)'}
+                  : 'บันทึกร่างส่วนตัว (Offline-Ready)'}
               </span>
             </button>
 
@@ -806,22 +956,19 @@ export function WeeklyReportTab({
               type="button"
               disabled={!canEditSelected || isLocked || submitting}
               onClick={handleSubmitReport}
-              className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-xl bg-teal-700 px-6 py-3 text-lg font-bold text-white shadow-sm hover:bg-teal-800 disabled:opacity-50"
+              className="fm-btn fm-btn-lime min-h-[56px] px-7 text-lg"
             >
-              {isLocked ? (
-                <>
-                  <Check className="h-5 w-5" aria-hidden="true" />
-                  <span>ส่งรายงานแล้ว ({reportStatus})</span>
-                </>
-              ) : (
-                <>
-                  <Send className="h-5 w-5" aria-hidden="true" />
-                  <span>{submitting ? 'กำลังส่ง...' : 'ส่งรายงานประจำสัปดาห์'}</span>
-                </>
-              )}
+              <Send className="h-5 w-5" aria-hidden="true" />
+              <span>
+                {submitting
+                  ? 'กำลังส่งรายงาน...'
+                  : isLocked
+                  ? 'ส่งรายงานแล้ว'
+                  : 'ยืนยันส่งรายงานประจำสัปดาห์'}
+              </span>
             </button>
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

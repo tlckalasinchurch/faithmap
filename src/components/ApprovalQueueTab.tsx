@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   CheckCircle2,
   EyeOff,
@@ -24,6 +24,22 @@ export function ApprovalQueueTab({
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'BLOCKED' | 'APPROVED'>('ALL');
+  const [reasonErrorId, setReasonErrorId] = useState<string | null>(null);
+  const noteInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const filteredReports = workspace.reports.filter((r) => {
+    if (statusFilter === 'PENDING') {
+      return ['submitted', 'under_review'].includes(r.status) && !r.isBlocked;
+    }
+    if (statusFilter === 'BLOCKED') {
+      return r.isBlocked || r.status === 'needs_revision';
+    }
+    if (statusFilter === 'APPROVED') {
+      return r.status === 'approved';
+    }
+    return true;
+  });
 
   const actor = workspace.actor;
   const supervisorGroups = new Set(actor.supervisorGroupIds);
@@ -56,31 +72,58 @@ export function ApprovalQueueTab({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-2xl font-bold text-slate-900">
-          คิวตรวจทานและอนุมัติรายงาน ({workspace.overview.selectedPeriod.periodKey})
-        </h2>
-        <p className="mt-1 text-base text-slate-600">
-          บังคับใช้ลำดับการตรวจทานจากหัวหน้าแคร์/ผู้ประสานงานก่อนอนุมัติ (DEC-04), ห้ามผู้ส่งอนุมัติตนเอง (DEC-05) และปิดซ่อนฉบับร่างส่วนตัว (FR-07.5)
+    <div className="space-y-6">
+      <section className="fm-panel-ink p-6">
+        <h1 className="font-display text-3xl font-extrabold text-[#F0F4F8]">
+          คิวตรวจทานและอนุมัติรายงาน · รอบ {workspace.overview.selectedPeriod.periodKey}
+        </h1>
+        <p className="mt-2 text-base font-medium text-[#E2E8F0]">
+          ตรวจสอบและอนุมัติรายงานตามลำดับจากหัวหน้าแคร์/ผู้ประสานงานสู่หัวหน้าบอดี้
         </p>
-      </div>
+      </section>
 
       {banner && (
         <div
           role="alert"
-          className={`rounded-xl border p-4 text-base font-semibold ${
+          className={`fm-panel p-4 text-base font-extrabold ${
             banner.type === 'ok'
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
-              : 'border-rose-300 bg-rose-50 text-rose-950'
+              ? 'bg-[#C8FF00] text-[#141413]'
+              : 'bg-[#FFE4E6] text-[#881337]'
           }`}
         >
           {banner.text}
         </div>
       )}
 
-      <div className="space-y-4">
-        {workspace.reports.map((report) => {
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          { id: 'ALL' as const, label: `ทั้งหมด (${workspace.reports.length})` },
+          { id: 'PENDING' as const, label: 'รอตรวจ / รออนุมัติ' },
+          { id: 'BLOCKED' as const, label: 'ติดขัด / ขอแก้ไข' },
+          { id: 'APPROVED' as const, label: 'อนุมัติแล้ว' },
+        ].map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setStatusFilter(f.id)}
+            className={`min-h-[44px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-sm font-extrabold ${
+              statusFilter === f.id
+                ? 'bg-[var(--fm-ink)] text-[var(--fm-lime)]'
+                : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <section className="fm-panel divide-y-2 divide-[#141413] overflow-hidden">
+        {filteredReports.length === 0 ? (
+          <p className="p-8 text-center text-base font-bold text-[var(--fm-ink)]">
+            ไม่มีรายงานในหมวดนี้
+          </p>
+        ) : (
+        filteredReports.map((report) => {
           const canReview =
             supervisorGroups.has(report.groupId) &&
             !report.isDraftHidden &&
@@ -95,19 +138,18 @@ export function ApprovalQueueTab({
           const noteText = notesById[report.id] ?? '';
 
           return (
-            <div
-              key={report.id}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-            >
+            <article key={report.id} className="bg-white p-6">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-xl font-bold text-slate-900">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="font-display text-2xl font-extrabold text-[#141413]">
                       {report.groupName}
-                    </h3>
-                    <span className="text-sm text-slate-500">({report.bodyName})</span>
+                    </h2>
+                    <span className="rounded-lg border-2 border-[#141413] bg-[#E2E8F0] px-2.5 py-0.5 text-sm font-bold text-[#141413]">
+                      {report.bodyName}
+                    </span>
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-2.5">
                     <StatusBadge
                       status={report.status}
                       isBlocked={report.isBlocked}
@@ -116,69 +158,79 @@ export function ApprovalQueueTab({
                   </div>
                 </div>
 
-                <div className="text-sm text-slate-600 sm:text-right">
+                <div className="text-sm sm:text-right">
                   {report.requiresSupervisorReview ? (
-                    <span className="inline-block rounded-lg bg-slate-100 px-2.5 py-1 font-medium">
-                      เส้นทาง: หัวหน้ากลุ่ม → ผู้ตรวจทาน (แคร์/ประสานงาน) → หัวหน้าบอดี้
+                    <span className="fm-sticker bg-[#F0F4F8] text-[#141413]">
+                      เส้นทาง: ผู้นำกลุ่ม → ผู้ตรวจทาน (แคร์/ประสานงาน) → หัวหน้าบอดี้
                     </span>
                   ) : (
-                    <span className="inline-block rounded-lg bg-teal-50 px-2.5 py-1 font-medium text-teal-900">
-                      เส้นทางตรง (CD-03): ไม่มีผู้ตรวจทาน → หัวหน้าบอดี้อนุมัติได้ทันที
+                    <span className="fm-sticker bg-[#C8FF00] text-[#141413]">
+                      เส้นทางตรง: ไม่มีผู้ตรวจทาน → หัวหน้าบอดี้อนุมัติได้ทันที
                     </span>
                   )}
                 </div>
               </div>
 
               {report.isDraftHidden ? (
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-base text-slate-700">
-                  <EyeOff className="h-5 w-5 shrink-0 text-slate-500" aria-hidden="true" />
+                <div className="mt-4 flex items-center gap-3 rounded-xl border-2 border-[#141413] bg-[#E2E8F0] p-4 text-base font-bold text-[#141413]">
+                  <EyeOff className="h-5 w-5 shrink-0" aria-hidden="true" />
                   <span>
-                    ผู้นำกลุ่มกำลังแก้ไขฉบับร่างส่วนตัว ข้อมูลรายละเอียดถูกปกปิดจนกว่าจะกดส่งรายงาน (FR-07.5)
+                    ผู้นำกลุ่มกำลังแก้ไขฉบับร่างส่วนตัว ข้อมูลรายละเอียดยังไม่เปิดให้ดูจนกว่าจะกดส่งรายงาน
                   </span>
                 </div>
               ) : (
                 <div className="mt-4 space-y-3">
-                  <div className="tabular-nums grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-base sm:grid-cols-4">
-                    <div>
-                      <span className="text-xs text-slate-500">สถานะประชุม</span>
-                      <div className="font-bold">
+                  <div className="tabular-nums grid grid-cols-2 divide-x-2 divide-[#141413] rounded-xl border-2 border-[#141413] bg-[#F0F4F8] text-base sm:grid-cols-4">
+                    <div className="p-3">
+                      <div className="text-xs font-bold text-[#27272A]">สถานะประชุม</div>
+                      <div className="mt-0.5 font-extrabold text-[#141413]">
                         {report.meetingHeld ? 'จัดประชุม' : 'งดประชุม'}
                       </div>
                     </div>
-                    <div>
-                      <span className="text-xs text-slate-500">ผู้เข้าร่วมรวม</span>
-                      <div className="font-bold">{report.totalAttendees} คน</div>
+                    <div className="p-3">
+                      <div className="text-xs font-bold text-[#27272A]">ผู้เข้าร่วมรวม</div>
+                      <div className="mt-0.5 font-mono font-extrabold text-[#141413]">
+                        {report.totalAttendees} คน
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-xs text-slate-500">ผู้เยี่ยมใหม่</span>
-                      <div className="font-bold">{report.newVisitorsCount} คน</div>
+                    <div className="p-3">
+                      <div className="text-xs font-bold text-[#27272A]">ผู้เยี่ยมใหม่</div>
+                      <div className="mt-0.5 font-mono font-extrabold text-[#1D4ED8]">
+                        {report.newVisitorsCount} คน
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-xs text-slate-500">ผู้ส่งรายงาน</span>
-                      <div className="font-semibold">{report.submittedByName ?? '-'}</div>
+                    <div className="p-3">
+                      <div className="text-xs font-bold text-[#27272A]">ผู้ส่งรายงาน</div>
+                      <div className="mt-0.5 font-bold text-[#141413]">
+                        {report.submittedByName ?? '-'}
+                      </div>
                     </div>
                   </div>
 
                   {report.summaryNotes && (
-                    <p className="text-base text-slate-700">
-                      <strong>สรุปกลุ่ม:</strong> {report.summaryNotes}
+                    <p className="text-base font-medium text-[#141413]">
+                      <strong className="font-extrabold">สรุปกลุ่ม:</strong> {report.summaryNotes}
                     </p>
                   )}
                   {report.prayerRequests && (
-                    <p className="text-base text-slate-700">
-                      <strong>คำอธิษฐาน:</strong> {report.prayerRequests}
+                    <p className="text-base font-medium text-[#141413]">
+                      <strong className="font-extrabold">คำอธิษฐาน:</strong> {report.prayerRequests}
                     </p>
                   )}
                   {report.revisionReason && (
-                    <p className="rounded-lg bg-amber-50 p-3 text-base text-amber-900">
+                    <p className="rounded-xl border-2 border-[#141413] bg-[#FEF3C7] p-3 text-base font-bold text-[#141413]">
                       <strong>เหตุผลส่งกลับแก้ไข:</strong> {report.revisionReason}
                     </p>
                   )}
                   {report.isBlocked && (
-                    <div className="flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-base text-rose-950">
-                      <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-700" aria-hidden="true" />
+                    <div className="flex items-start gap-2.5 rounded-xl border-2 border-[#141413] bg-[#FFE4E6] p-3.5 text-base font-bold text-[#881337]">
+                      <ShieldAlert
+                        className="mt-0.5 h-5 w-5 shrink-0 text-[#BE123C]"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <strong>ติดขัด (Blocked):</strong> {report.blockedReason} — ต้องแก้ปัญหาผู้นำบอดี้ก่อนปลดล็อก (CD-07)
+                        <strong>ติดปัญหาส่งต่อ:</strong> {report.blockedReason} —
+                        ต้องแก้ปัญหาหัวหน้าบอดี้ก่อนจึงจะปลดล็อกได้
                       </div>
                     </div>
                   )}
@@ -186,16 +238,27 @@ export function ApprovalQueueTab({
               )}
 
               {(canReview || canApproveRole || (isAdmin && report.isBlocked)) && (
-                <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+                <div className="mt-4 space-y-3 border-t-2 border-dashed border-[#141413]/30 pt-4">
                   <input
+                    ref={(el) => {
+                      noteInputRefs.current[report.id] = el;
+                    }}
                     type="text"
                     value={noteText}
-                    onChange={(e) =>
-                      setNotesById((prev) => ({ ...prev, [report.id]: e.target.value }))
-                    }
-                    placeholder="หมายเหตุการตรวจทาน / เหตุผลในการส่งกลับขอแก้ไข..."
-                    className="min-h-[48px] w-full rounded-xl border border-slate-300 px-3 text-base"
+                    onChange={(e) => {
+                      setReasonErrorId((prev) => (prev === report.id ? null : prev));
+                      setNotesById((prev) => ({ ...prev, [report.id]: e.target.value }));
+                    }}
+                    placeholder="หมายเหตุการตรวจทาน / เหตุผลในการส่งกลับขอแก้ไข…"
+                    className={`fm-input w-full ${
+                      reasonErrorId === report.id ? 'border-[var(--fm-coral)] ring-2 ring-[var(--fm-coral)]' : ''
+                    }`}
                   />
+                  {reasonErrorId === report.id && (
+                    <p className="text-sm font-extrabold text-[var(--fm-coral)]">
+                      กรุณาระบุเหตุผลในการส่งกลับขอแก้ไขก่อนกดปุ่มนี้
+                    </p>
+                  )}
 
                   <div className="flex flex-wrap gap-2.5">
                     {canReview && (
@@ -216,7 +279,7 @@ export function ApprovalQueueTab({
                               `ตรวจทานรายงาน ${report.groupName} และส่งต่อหัวหน้าบอดี้แล้ว`
                             )
                           }
-                          className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2 text-base font-bold text-white hover:bg-indigo-800 disabled:opacity-50"
+                          className="fm-btn fm-btn-violet text-base"
                         >
                           <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
                           <span>ผ่านการตรวจทาน → ส่งต่อหัวหน้าบอดี้</span>
@@ -224,20 +287,25 @@ export function ApprovalQueueTab({
                         <button
                           type="button"
                           disabled={busyId === report.id}
-                          onClick={() =>
-                            runAction(
+                          onClick={() => {
+                            if (!noteText.trim()) {
+                              setReasonErrorId(report.id);
+                              noteInputRefs.current[report.id]?.focus();
+                              return;
+                            }
+                            void runAction(
                               report,
                               {
                                 action: 'review',
                                 reportId: report.id,
                                 decision: 'request_revision',
-                                notesOrReason: noteText,
+                                notesOrReason: noteText.trim(),
                                 expectedVersion: report.version,
                               },
                               `ส่งกลับรายงาน ${report.groupName} ให้ผู้นำกลุ่มแก้ไขแล้ว`
-                            )
-                          }
-                          className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-amber-600 bg-amber-50 px-4 py-2 text-base font-bold text-amber-950 hover:bg-amber-100"
+                            );
+                          }}
+                          className="fm-btn bg-[#FFB703] text-base text-[#141413]"
                         >
                           <RotateCcw className="h-5 w-5" aria-hidden="true" />
                           <span>ส่งกลับขอแก้ไข</span>
@@ -248,8 +316,8 @@ export function ApprovalQueueTab({
                     {canApproveRole && (
                       <>
                         {isSelfSubmitter ? (
-                          <span className="inline-flex min-h-[48px] items-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-900">
-                            คุณเป็นผู้ส่งรายงานนี้ จึงไม่อนุญาตให้อนุมัติรายงานตนเอง (DEC-05)
+                          <span className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-[#141413] bg-[#FFE4E6] px-4 text-sm font-extrabold text-[#881337]">
+                            ผู้ส่งรายงานไม่สามารถอนุมัติรายงานของตนเองได้
                           </span>
                         ) : (
                           <>
@@ -269,7 +337,7 @@ export function ApprovalQueueTab({
                                   `อนุมัติรายงาน ${report.groupName} เรียบร้อยแล้ว`
                                 )
                               }
-                              className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-teal-700 px-5 py-2 text-base font-bold text-white hover:bg-teal-800 disabled:opacity-50"
+                              className="fm-btn fm-btn-lime text-base"
                             >
                               <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
                               <span>อนุมัติรายงาน</span>
@@ -290,7 +358,7 @@ export function ApprovalQueueTab({
                                   `หัวหน้าบอดี้ส่งกลับ ${report.groupName} เพื่อแก้ไขแล้ว`
                                 )
                               }
-                              className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-amber-600 bg-amber-50 px-4 py-2 text-base font-bold text-amber-950 hover:bg-amber-100"
+                              className="fm-btn bg-[#FFB703] text-base text-[#141413]"
                             >
                               <RotateCcw className="h-5 w-5" aria-hidden="true" />
                               <span>ส่งกลับแก้ไข</span>
@@ -315,27 +383,27 @@ export function ApprovalQueueTab({
                             `ปลดล็อกรายงาน ${report.groupName} เรียบร้อยแล้ว`
                           )
                         }
-                        className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-rose-700 px-5 py-2 text-base font-bold text-white hover:bg-rose-800"
+                        className="fm-btn fm-btn-coral text-base"
                       >
                         <Unlock className="h-5 w-5" aria-hidden="true" />
-                        <span>ปลดล็อกรายงาน (Admin Unblock CD-07)</span>
+                        <span>ปลดล็อกให้ส่งต่อได้</span>
                       </button>
                     )}
 
                     <button
                       type="button"
                       onClick={() => onOpenReportForGroup(report.groupId)}
-                      className="min-h-[48px] rounded-xl border border-slate-300 bg-white px-4 py-2 text-base font-semibold text-slate-700 hover:bg-slate-50"
+                      className="fm-btn fm-btn-paper text-base"
                     >
-                      ดูหน้าแบบฟอร์ม
+                      <span>เปิดหน้าแบบฟอร์ม</span>
                     </button>
                   </div>
                 </div>
               )}
-            </div>
+            </article>
           );
-        })}
-      </div>
+        }))}
+      </section>
     </div>
   );
 }
