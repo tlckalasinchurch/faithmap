@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS members (
   phone_e164 TEXT,
   line_user_id TEXT,
   email TEXT,
+  source_sequence_no TEXT,
+  study_workplace_raw TEXT,
+  family_status_raw TEXT,
   membership_status TEXT NOT NULL DEFAULT 'active',
   verification_status TEXT NOT NULL DEFAULT 'unverified',
   privacy_consent_status TEXT NOT NULL DEFAULT 'consented',
@@ -121,28 +124,71 @@ CREATE TABLE IF NOT EXISTS bodies (
   CONSTRAINT bodies_status_chk CHECK (status IN ('active', 'inactive', 'archived'))
 );
 
+CREATE TABLE IF NOT EXISTS cares (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  care_code TEXT NOT NULL UNIQUE,
+  care_name TEXT,
+  team_name TEXT,
+  body_id UUID REFERENCES bodies(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'provisional',
+  source_batch_id UUID,
+  source_ref TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cares_status_chk CHECK (status IN ('provisional', 'active', 'pending_assignment', 'inactive', 'archived'))
+);
+CREATE INDEX IF NOT EXISTS cares_body_idx ON cares(body_id);
+CREATE INDEX IF NOT EXISTS cares_status_idx ON cares(status);
+
+CREATE TABLE IF NOT EXISTS team_field_points (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_code TEXT NOT NULL DEFAULT 'G',
+  point_no INTEGER NOT NULL,
+  point_name TEXT NOT NULL,
+  coordinator_name TEXT,
+  phone_raw TEXT,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  maps_url TEXT,
+  source_sheet TEXT NOT NULL DEFAULT 'kalasin-field-points',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT team_field_points_coords_chk CHECK (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS team_field_points_team_no_uidx ON team_field_points(team_code, point_no);
+
 CREATE TABLE IF NOT EXISTS house_mission_groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   group_code TEXT NOT NULL UNIQUE,
   body_id UUID REFERENCES bodies(id) ON DELETE SET NULL,
+  care_id UUID REFERENCES cares(id) ON DELETE SET NULL,
+  team_name TEXT,
   name_th TEXT NOT NULL,
   name_en TEXT,
   group_name_from_sheet TEXT,
   form_title TEXT,
   care_code_raw TEXT,
+  registered_total_raw TEXT,
+  registered_total_int INTEGER,
   district TEXT NOT NULL,
+  district_raw TEXT,
   subdistrict TEXT,
   village TEXT,
   province TEXT NOT NULL DEFAULT 'กาฬสินธุ์',
   address_summary TEXT,
   latitude DOUBLE PRECISION,
   longitude DOUBLE PRECISION,
+  map_url_raw TEXT,
+  group_photo_url TEXT,
   meeting_day_of_week INTEGER,
+  meeting_day_raw TEXT,
   meeting_time_local TEXT,
   meeting_time_raw TEXT,
   status TEXT NOT NULL DEFAULT 'active',
   assignment_status TEXT NOT NULL DEFAULT 'assigned',
   location_status TEXT NOT NULL DEFAULT 'verified',
+  verification_status TEXT NOT NULL DEFAULT 'RAW',
   target_attendance INTEGER NOT NULL DEFAULT 12,
   source_batch_id UUID,
   source_ref TEXT,
@@ -152,6 +198,7 @@ CREATE TABLE IF NOT EXISTS house_mission_groups (
   CONSTRAINT groups_status_chk CHECK (status IN ('active', 'inactive', 'merged', 'archived', 'pending_activation')),
   CONSTRAINT groups_assignment_status_chk CHECK (assignment_status IN ('assigned', 'pending_assignment')),
   CONSTRAINT groups_location_status_chk CHECK (location_status IN ('verified', 'pending_location')),
+  CONSTRAINT groups_verification_status_chk CHECK (verification_status IN ('RAW', 'NORMALIZED', 'VERIFIED', 'PENDING_REVIEW', 'CONFLICT', 'INCOMPLETE')),
   CONSTRAINT groups_meeting_day_chk CHECK (meeting_day_of_week IS NULL OR meeting_day_of_week BETWEEN 1 AND 7),
   CONSTRAINT groups_coords_pair_chk CHECK ((latitude IS NULL AND longitude IS NULL) OR (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180))
 );
@@ -193,6 +240,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   source_role_label TEXT,
   scope_type TEXT NOT NULL,
   body_id UUID REFERENCES bodies(id) ON DELETE CASCADE,
+  care_id UUID REFERENCES cares(id) ON DELETE CASCADE,
   group_id UUID REFERENCES house_mission_groups(id) ON DELETE CASCADE,
   role_type TEXT NOT NULL,
   is_primary BOOLEAN NOT NULL DEFAULT true,
@@ -208,12 +256,14 @@ CREATE TABLE IF NOT EXISTS assignments (
   ),
   CONSTRAINT assignments_link_status_chk CHECK (link_status IN ('linked_user', 'unlinked_pending_account')),
   CONSTRAINT assignments_scope_chk CHECK (
-    (scope_type = 'body' AND body_id IS NOT NULL AND group_id IS NULL)
-    OR (scope_type = 'group' AND group_id IS NOT NULL AND body_id IS NULL)
+    (scope_type = 'body' AND body_id IS NOT NULL AND care_id IS NULL AND group_id IS NULL)
+    OR (scope_type = 'care' AND care_id IS NOT NULL AND body_id IS NULL AND group_id IS NULL)
+    OR (scope_type = 'group' AND group_id IS NOT NULL AND body_id IS NULL AND care_id IS NULL)
   ),
   CONSTRAINT assignments_role_chk CHECK (role_type IN ('body_leader', 'care_leader', 'coordinator', 'group_leader', 'other_authorized')),
   CONSTRAINT assignments_scope_role_match_chk CHECK (
     (scope_type = 'body' AND role_type = 'body_leader')
+    OR (scope_type = 'care' AND role_type IN ('care_leader', 'other_authorized'))
     OR (scope_type = 'group' AND role_type IN ('care_leader', 'coordinator', 'group_leader', 'other_authorized'))
   )
 );
@@ -228,6 +278,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS assignments_active_user_body_role_uidx
 CREATE INDEX IF NOT EXISTS assignments_user_active_idx ON assignments(user_id, effective_to);
 CREATE INDEX IF NOT EXISTS assignments_group_active_idx ON assignments(group_id, effective_to);
 CREATE INDEX IF NOT EXISTS assignments_body_active_idx ON assignments(body_id, effective_to);
+
+CREATE TABLE IF NOT EXISTS member_growth_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  group_id UUID REFERENCES house_mission_groups(id) ON DELETE SET NULL,
+  conversion_date_raw TEXT,
+  response_attitude_raw TEXT,
+  group_attendance_level_raw TEXT,
+  discipleship_goal_raw TEXT,
+  target_timeframe_raw TEXT,
+  discipler_name_raw TEXT,
+  discipler_assignment_id UUID REFERENCES assignments(id) ON DELETE SET NULL,
+  verification_status TEXT NOT NULL DEFAULT 'RAW',
+  source_batch_id UUID,
+  source_file TEXT,
+  source_sheet TEXT,
+  source_row INTEGER,
+  raw_cells_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT member_growth_verification_chk CHECK (
+    verification_status IN ('RAW', 'NORMALIZED', 'VERIFIED', 'PENDING_REVIEW', 'CONFLICT', 'INCOMPLETE')
+  )
+);
+CREATE INDEX IF NOT EXISTS member_growth_member_idx ON member_growth_records(member_id);
+CREATE INDEX IF NOT EXISTS member_growth_group_idx ON member_growth_records(group_id);
 
 CREATE TABLE IF NOT EXISTS group_memberships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -544,9 +620,11 @@ CREATE TABLE IF NOT EXISTS staging_groups (
   row_sha256 TEXT NOT NULL,
   group_name_from_sheet_raw TEXT NOT NULL,
   form_title_raw TEXT,
+  district_raw TEXT,
   district_normalized TEXT,
   subdistrict_raw TEXT,
   village_raw TEXT,
+  meeting_day_raw TEXT,
   meeting_time_start_raw TEXT,
   meeting_time_end_raw TEXT,
   meeting_place_raw TEXT,
@@ -554,6 +632,7 @@ CREATE TABLE IF NOT EXISTS staging_groups (
   coordinator_raw TEXT,
   care_label_raw TEXT,
   care_code_raw TEXT,
+  registered_total_raw TEXT,
   member_row_count_derived INTEGER NOT NULL DEFAULT 0,
   data_status TEXT NOT NULL DEFAULT 'raw',
   promoted_group_id UUID REFERENCES house_mission_groups(id) ON DELETE SET NULL,
@@ -664,6 +743,9 @@ ALTER TABLE members ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL D
 ALTER TABLE members ADD COLUMN IF NOT EXISTS source_batch_id UUID;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS source_row_ref TEXT;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS source_provenance JSONB;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS source_sequence_no TEXT;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS study_workplace_raw TEXT;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS family_status_raw TEXT;
 
 ALTER TABLE house_mission_groups ALTER COLUMN body_id DROP NOT NULL;
 ALTER TABLE house_mission_groups ALTER COLUMN address_summary DROP NOT NULL;
@@ -682,6 +764,16 @@ ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS assignment_status TEXT
 ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS location_status TEXT NOT NULL DEFAULT 'verified';
 ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS source_batch_id UUID;
 ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS source_ref TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS care_id UUID REFERENCES cares(id) ON DELETE SET NULL;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS team_name TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS registered_total_raw TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS registered_total_int INTEGER;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS district_raw TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS map_url_raw TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS group_photo_url TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS meeting_day_raw TEXT;
+ALTER TABLE house_mission_groups ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'RAW';
+CREATE INDEX IF NOT EXISTS groups_care_idx ON house_mission_groups(care_id);
 CREATE INDEX IF NOT EXISTS groups_assignment_body_idx ON house_mission_groups(assignment_status, body_id);
 CREATE INDEX IF NOT EXISTS groups_location_status_idx ON house_mission_groups(location_status);
 
@@ -690,11 +782,24 @@ ALTER TABLE assignments ADD COLUMN IF NOT EXISTS steward_member_id UUID REFERENC
 ALTER TABLE assignments ADD COLUMN IF NOT EXISTS steward_display_name TEXT;
 ALTER TABLE assignments ADD COLUMN IF NOT EXISTS link_status TEXT NOT NULL DEFAULT 'linked_user';
 ALTER TABLE assignments ADD COLUMN IF NOT EXISTS source_role_label TEXT;
+ALTER TABLE assignments ADD COLUMN IF NOT EXISTS care_id UUID REFERENCES cares(id) ON DELETE CASCADE;
+ALTER TABLE assignments DROP CONSTRAINT IF EXISTS assignments_scope_chk;
+ALTER TABLE assignments ADD CONSTRAINT assignments_scope_chk CHECK (
+  (scope_type = 'body' AND body_id IS NOT NULL AND care_id IS NULL AND group_id IS NULL)
+  OR (scope_type = 'care' AND care_id IS NOT NULL AND body_id IS NULL AND group_id IS NULL)
+  OR (scope_type = 'group' AND group_id IS NOT NULL AND body_id IS NULL AND care_id IS NULL)
+);
 ALTER TABLE assignments DROP CONSTRAINT IF EXISTS assignments_scope_role_match_chk;
 ALTER TABLE assignments ADD CONSTRAINT assignments_scope_role_match_chk CHECK (
   (scope_type = 'body' AND role_type = 'body_leader')
+  OR (scope_type = 'care' AND role_type IN ('care_leader', 'other_authorized'))
   OR (scope_type = 'group' AND role_type IN ('care_leader', 'coordinator', 'group_leader', 'other_authorized'))
 );
+CREATE UNIQUE INDEX IF NOT EXISTS assignments_active_primary_care_uidx
+  ON assignments(care_id, role_type) WHERE effective_to IS NULL AND is_primary = true AND scope_type = 'care';
+CREATE UNIQUE INDEX IF NOT EXISTS assignments_active_user_care_role_uidx
+  ON assignments(user_id, care_id, role_type) WHERE effective_to IS NULL AND scope_type = 'care' AND user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS assignments_care_active_idx ON assignments(care_id, effective_to);
 
 ALTER TABLE period_group_snapshots ALTER COLUMN body_id DROP NOT NULL;
 ALTER TABLE period_group_snapshots ALTER COLUMN body_name_snapshot SET DEFAULT 'รอจัดสรรบอดี้';
