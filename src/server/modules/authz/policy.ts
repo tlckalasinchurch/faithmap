@@ -22,6 +22,60 @@ export function isBodyLeaderForBody(actor: ActorContext, bodyId: string | null |
   return actor.bodyLeaderBodyIds.has(bodyId);
 }
 
+export function isCareLeaderForCare(actor: ActorContext, careId: string | null | undefined): boolean {
+  if (!careId) return false;
+  return actor.careLeaderCareIds.has(careId);
+}
+
+export function canAccessCare(
+  actor: ActorContext,
+  careId: string,
+  bodyId: string | null | undefined
+): boolean {
+  if (isGlobalMetricsReader(actor)) return true;
+  if (isBodyLeaderForBody(actor, bodyId)) return true;
+  return actor.assignedCareIds.has(careId);
+}
+
+export function assertCanAccessCare(
+  actor: ActorContext,
+  careId: string,
+  bodyId: string | null | undefined
+): void {
+  if (!canAccessCare(actor, careId, bodyId)) {
+    throw new AppError(
+      403,
+      'SCOPE_FORBIDDEN',
+      'คุณไม่มีสิทธิ์เข้าถึงข้อมูลของแคร์นี้'
+    );
+  }
+}
+
+export function canManageCareScope(
+  actor: ActorContext,
+  careId: string | null | undefined,
+  bodyId: string | null | undefined
+): boolean {
+  if (isAdmin(actor)) return true;
+  if (bodyId && isBodyLeaderForBody(actor, bodyId)) return true;
+  if (careId && isCareLeaderForCare(actor, careId)) return true;
+  return false;
+}
+
+export function assertCanManageCareScope(
+  actor: ActorContext,
+  careId: string | null | undefined,
+  bodyId: string | null | undefined
+): void {
+  if (!canManageCareScope(actor, careId, bodyId)) {
+    throw new AppError(
+      403,
+      'SCOPE_FORBIDDEN',
+      'คุณไม่มีสิทธิ์จัดการแคร์หรือผู้ดูแลแคร์นี้'
+    );
+  }
+}
+
 export function isGroupLeaderForGroup(actor: ActorContext, groupId: string): boolean {
   return actor.groupLeaderGroupIds.has(groupId);
 }

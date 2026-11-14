@@ -4,6 +4,7 @@ import {
   assignments,
   authSessions,
   bodies,
+  cares,
   externalIdentities,
   houseMissionGroups,
   userPasskeys,
@@ -24,10 +25,12 @@ export type AssignmentRole = 'body_leader' | 'care_leader' | 'coordinator' | 'gr
 
 export interface ActiveAssignmentView {
   id: string;
-  scopeType: 'body' | 'group';
+  scopeType: 'body' | 'care' | 'group';
   bodyId: string | null;
+  careId: string | null;
   groupId: string | null;
   bodyName: string | null;
+  careCode: string | null;
   groupName: string | null;
   roleType: AssignmentRole;
   isPrimary: boolean;
@@ -49,6 +52,8 @@ export interface ActorContext {
   csrfTokenHash: string | null;
   assignments: ActiveAssignmentView[];
   bodyLeaderBodyIds: Set<string>;
+  careLeaderCareIds: Set<string>;
+  assignedCareIds: Set<string>;
   groupLeaderGroupIds: Set<string>;
   supervisorGroupIds: Set<string>;
   assignedGroupIds: Set<string>;
@@ -96,6 +101,9 @@ export async function buildActorContext(
   const bodyIds = Array.from(
     new Set(rawAssignments.map((a) => a.bodyId).filter((x): x is string => Boolean(x)))
   );
+  const careIds = Array.from(
+    new Set(rawAssignments.map((a) => a.careId).filter((x): x is string => Boolean(x)))
+  );
   const groupIds = Array.from(
     new Set(rawAssignments.map((a) => a.groupId).filter((x): x is string => Boolean(x)))
   );
@@ -107,6 +115,15 @@ export async function buildActorContext(
       .from(bodies)
       .where(inArray(bodies.id, bodyIds));
     for (const b of bodyRows) bodyMap.set(b.id, b.nameTh);
+  }
+
+  const careMap = new Map<string, { careCode: string; bodyId: string | null }>();
+  if (careIds.length > 0) {
+    const careRows = await db
+      .select({ id: cares.id, careCode: cares.careCode, bodyId: cares.bodyId })
+      .from(cares)
+      .where(inArray(cares.id, careIds));
+    for (const c of careRows) careMap.set(c.id, { careCode: c.careCode, bodyId: c.bodyId });
   }
 
   const groupMap = new Map<string, { nameTh: string; bodyId: string | null }>();
@@ -124,23 +141,33 @@ export async function buildActorContext(
 
   const views: ActiveAssignmentView[] = rawAssignments.map((a) => ({
     id: a.id,
-    scopeType: a.scopeType as 'body' | 'group',
+    scopeType: a.scopeType as 'body' | 'care' | 'group',
     bodyId: a.bodyId ?? (a.groupId ? groupMap.get(a.groupId)?.bodyId ?? null : null),
+    careId: a.careId ?? null,
     groupId: a.groupId ?? null,
     bodyName: a.bodyId ? bodyMap.get(a.bodyId) ?? null : null,
+    careCode: a.careId ? careMap.get(a.careId)?.careCode ?? null : null,
     groupName: a.groupId ? groupMap.get(a.groupId)?.nameTh ?? null : null,
     roleType: a.roleType as AssignmentRole,
     isPrimary: a.isPrimary,
   }));
 
   const bodyLeaderBodyIds = new Set<string>();
+  const careLeaderCareIds = new Set<string>();
+  const assignedCareIds = new Set<string>();
   const groupLeaderGroupIds = new Set<string>();
   const supervisorGroupIds = new Set<string>();
   const assignedGroupIds = new Set<string>();
 
   for (const a of views) {
-    if (a.roleType === 'body_leader' && a.bodyId) {
+    if (a.scopeType === 'body' && a.roleType === 'body_leader' && a.bodyId) {
       bodyLeaderBodyIds.add(a.bodyId);
+    }
+    if (a.scopeType === 'care' && a.careId) {
+      assignedCareIds.add(a.careId);
+      if (a.roleType === 'care_leader') {
+        careLeaderCareIds.add(a.careId);
+      }
     }
     if (a.groupId) {
       assignedGroupIds.add(a.groupId);
@@ -168,6 +195,8 @@ export async function buildActorContext(
     csrfTokenHash,
     assignments: views,
     bodyLeaderBodyIds,
+    careLeaderCareIds,
+    assignedCareIds,
     groupLeaderGroupIds,
     supervisorGroupIds,
     assignedGroupIds,

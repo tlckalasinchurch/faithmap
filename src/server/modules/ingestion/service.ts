@@ -1,16 +1,18 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
   bodies,
   candidateLocationMatches,
   careBodyMappings,
+  cares,
   dataQualityIssues,
   districtCanonicalMappings,
   groupMemberships,
   houseMissionGroups,
   importBatches,
+  memberGrowthRecords,
   members,
   stagingGroups,
   stagingMemberRows,
@@ -38,7 +40,10 @@ export interface ImportGroupInput {
   coordinator?: string | null;
   careLabel?: string | null;
   careCode?: string | null;
+  teamName?: string | null;
   registeredTotal?: string | number | null;
+  mapUrlRaw?: string | null;
+  groupPhotoUrl?: string | null;
   sourceFile: string;
   sourceSheet: string;
 }
@@ -46,11 +51,20 @@ export interface ImportGroupInput {
 export interface ImportMemberInput {
   memberRowRef: string;
   groupRef: string;
+  sequenceRaw?: string | number | null;
   fullNameRaw?: string | null;
   nicknameRaw?: string | null;
   ageRaw?: string | number | null;
   occupationRaw?: string | null;
+  studyWorkplaceRaw?: string | null;
+  familyStatusRaw?: string | null;
   locationRaw?: string | null;
+  salvationDateRaw?: string | null;
+  responseAttitudeRaw?: string | null;
+  groupAttendanceLevelRaw?: string | null;
+  discipleshipGoalRaw?: string | null;
+  targetTimeframeRaw?: string | null;
+  disciplerNameRaw?: string | null;
   sourceFile: string;
   sourceSheet: string;
   sourceRow: number;
@@ -71,6 +85,72 @@ function sha256Hex(input: string): string {
 function normalizeText(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return '';
   return String(v).trim();
+}
+
+function pickRawCell(
+  rawCells: Record<string, unknown> | undefined,
+  keys: string[]
+): string | null {
+  if (!rawCells) return null;
+  for (const key of keys) {
+    const val = rawCells[key];
+    if (val !== undefined && val !== null) {
+      const s = String(val).trim();
+      if (s !== '') return s;
+    }
+  }
+  return null;
+}
+
+function extractMemberExtras(rawCells: Record<string, unknown> | undefined) {
+  const meta =
+    rawCells && typeof rawCells.__memberFields === 'object' && rawCells.__memberFields !== null
+      ? (rawCells.__memberFields as Record<string, unknown>)
+      : undefined;
+  return {
+    sourceSequenceNo:
+      (meta?.sequenceRaw ? String(meta.sequenceRaw).trim() : null) ??
+      pickRawCell(rawCells, ['ลำดับ', 'sequence', 'no', 'seq']),
+    studyWorkplaceRaw:
+      (meta?.studyWorkplaceRaw ? String(meta.studyWorkplaceRaw).trim() : null) ??
+      pickRawCell(rawCells, ['สถานที่เรียน/ทำงาน', 'สถานที่เรียน', 'ที่ทำงาน', 'studyWorkplace', 'study_workplace']),
+    familyStatusRaw:
+      (meta?.familyStatusRaw ? String(meta.familyStatusRaw).trim() : null) ??
+      pickRawCell(rawCells, ['สถานภาพครอบครัว', 'สถานภาพ', 'familyStatus', 'family_status']),
+  };
+}
+
+function extractGrowthFields(rawCells: Record<string, unknown> | undefined) {
+  const meta =
+    rawCells && typeof rawCells.__growthFields === 'object' && rawCells.__growthFields !== null
+      ? (rawCells.__growthFields as Record<string, unknown>)
+      : undefined;
+  const pickMeta = (k: string) => {
+    const v = meta?.[k];
+    if (v === undefined || v === null) return null;
+    const s = String(v).trim();
+    return s || null;
+  };
+  return {
+    conversionDateRaw:
+      pickMeta('salvationDateRaw') ??
+      pickRawCell(rawCells, ['วันรับเชื่อ', 'salvation_date', 'conversionDateRaw', 'Y']),
+    responseAttitudeRaw:
+      pickMeta('responseAttitudeRaw') ??
+      pickRawCell(rawCells, ['ท่าทีการตอบสนอง', 'response', 'responseAttitudeRaw', 'Z']),
+    groupAttendanceLevelRaw:
+      pickMeta('groupAttendanceLevelRaw') ??
+      pickRawCell(rawCells, ['การเข้าร่วมกลุ่ม', 'group_attendance', 'groupAttendanceLevelRaw', 'AA']),
+    discipleshipGoalRaw:
+      pickMeta('discipleshipGoalRaw') ??
+      pickRawCell(rawCells, ['เป้าหมายในการสร้าง', 'growth_goal', 'discipleshipGoalRaw', 'AB']),
+    targetTimeframeRaw:
+      pickMeta('targetTimeframeRaw') ??
+      pickRawCell(rawCells, ['กำหนดเวลาภายใน', 'deadline', 'targetTimeframeRaw', 'AC']),
+    disciplerNameRaw:
+      pickMeta('disciplerNameRaw') ??
+      pickRawCell(rawCells, ['ผู้รับผิดชอบสร้าง', 'growth_responsible_person', 'disciplerNameRaw', 'AD']),
+  };
 }
 
 function parseThaiWeekday(raw: string): number | null {
@@ -189,6 +269,18 @@ export async function stageImportBatch(
 
   const batchCode = `IMP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${preview.fileSha256.slice(0, 6).toUpperCase()}`;
 
+  const groupExtrasByRef: Record<
+    string,
+    { teamName: string | null; mapUrlRaw: string | null; groupPhotoUrl: string | null }
+  > = {};
+  for (const g of payload.groups) {
+    groupExtrasByRef[g.groupRef] = {
+      teamName: normalizeText(g.teamName) || null,
+      mapUrlRaw: normalizeText(g.mapUrlRaw) || null,
+      groupPhotoUrl: normalizeText(g.groupPhotoUrl) || null,
+    };
+  }
+
   const createdBatch = await db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
     const [batch] = await tdb
@@ -199,7 +291,7 @@ export async function stageImportBatch(
         fileSha256: preview.fileSha256,
         selectionPolicyVersion: payload.selectionPolicyVersion ?? '1.0',
         status: 'staged',
-        summaryJson: preview,
+        summaryJson: { ...preview, groupExtrasByRef },
         uploadedByUserId: actor.user.id,
       })
       .returning();
@@ -309,6 +401,21 @@ export async function stageImportBatch(
       }
     }
 
+    const existingMembers = await tdb
+      .select({
+        id: members.id,
+        memberCode: members.memberCode,
+        fullName: members.fullName,
+      })
+      .from(members);
+    const existingMemberByFullName = new Map<string, { id: string; memberCode: string }>();
+    for (const em of existingMembers) {
+      const normFn = em.fullName?.trim().replace(/\s+/g, ' ');
+      if (normFn && !existingMemberByFullName.has(normFn)) {
+        existingMemberByFullName.set(normFn, { id: em.id, memberCode: em.memberCode });
+      }
+    }
+
     const stagingMemberBuckets = new Map<string, Array<{ id: string; memberRowRef: string; groupRef: string }>>();
 
     for (const m of payload.members) {
@@ -319,6 +426,61 @@ export async function stageImportBatch(
       const nn = normalizeText(m.nicknameRaw);
       const missingBoth = !fn && !nn;
       const rowSha = sha256Hex(`${m.sourceFile}|${m.sourceSheet}|${m.sourceRow}|${m.memberRowRef}`);
+
+      const normFullName = fn ? fn.replace(/\s+/g, ' ') : '';
+      const matchedExisting = normFullName ? existingMemberByFullName.get(normFullName) : undefined;
+
+      const rawCellsToStore: Record<string, unknown> = { ...(m.rawCells ?? {}) };
+      if (
+        m.sequenceRaw !== undefined ||
+        m.studyWorkplaceRaw !== undefined ||
+        m.familyStatusRaw !== undefined
+      ) {
+        rawCellsToStore.__memberFields = {
+          ...(m.sequenceRaw !== undefined ? { sequenceRaw: normalizeText(m.sequenceRaw) || null } : {}),
+          ...(m.studyWorkplaceRaw !== undefined
+            ? { studyWorkplaceRaw: normalizeText(m.studyWorkplaceRaw) || null }
+            : {}),
+          ...(m.familyStatusRaw !== undefined
+            ? { familyStatusRaw: normalizeText(m.familyStatusRaw) || null }
+            : {}),
+        };
+      }
+      if (
+        m.salvationDateRaw !== undefined ||
+        m.responseAttitudeRaw !== undefined ||
+        m.groupAttendanceLevelRaw !== undefined ||
+        m.discipleshipGoalRaw !== undefined ||
+        m.targetTimeframeRaw !== undefined ||
+        m.disciplerNameRaw !== undefined
+      ) {
+        rawCellsToStore.__growthFields = {
+          ...(m.salvationDateRaw !== undefined
+            ? { salvationDateRaw: normalizeText(m.salvationDateRaw) || null }
+            : {}),
+          ...(m.responseAttitudeRaw !== undefined
+            ? { responseAttitudeRaw: normalizeText(m.responseAttitudeRaw) || null }
+            : {}),
+          ...(m.groupAttendanceLevelRaw !== undefined
+            ? { groupAttendanceLevelRaw: normalizeText(m.groupAttendanceLevelRaw) || null }
+            : {}),
+          ...(m.discipleshipGoalRaw !== undefined
+            ? { discipleshipGoalRaw: normalizeText(m.discipleshipGoalRaw) || null }
+            : {}),
+          ...(m.targetTimeframeRaw !== undefined
+            ? { targetTimeframeRaw: normalizeText(m.targetTimeframeRaw) || null }
+            : {}),
+          ...(m.disciplerNameRaw !== undefined
+            ? { disciplerNameRaw: normalizeText(m.disciplerNameRaw) || null }
+            : {}),
+        };
+      }
+
+      const initialStatus = missingBoth
+        ? 'incomplete'
+        : matchedExisting
+          ? 'conflict'
+          : 'raw';
 
       const [sm] = await tdb
         .insert(stagingMemberRows)
@@ -335,8 +497,9 @@ export async function stageImportBatch(
           ageRaw: normalizeText(m.ageRaw) || null,
           occupationRaw: normalizeText(m.occupationRaw) || null,
           locationRaw: normalizeText(m.locationRaw) || null,
-          rawCellsJson: m.rawCells ?? {},
-          dataStatus: missingBoth ? 'incomplete' : 'raw',
+          rawCellsJson: rawCellsToStore,
+          duplicateCandidateOfMemberId: matchedExisting?.id ?? null,
+          dataStatus: initialStatus,
         })
         .returning();
 
@@ -351,19 +514,38 @@ export async function stageImportBatch(
           summarySafeText: `${m.memberRowRef} (${m.groupRef} แถว ${m.sourceRow}): ไม่มีทั้งชื่อจริงและชื่อเล่น`,
         });
       } else {
-        const nameKey = sha256Hex(
-          `${fn.replace(/\s+/g, ' ')}|${nn.replace(/\s+/g, ' ')}`
-        ).slice(0, 12);
-        const bucket = stagingMemberBuckets.get(nameKey) ?? [];
-        bucket.push({ id: sm!.id, memberRowRef: m.memberRowRef, groupRef: m.groupRef });
-        stagingMemberBuckets.set(nameKey, bucket);
+        if (matchedExisting) {
+          dqRows.push({
+            batchId: batch!.id,
+            targetType: 'staging_member',
+            targetId: sm!.id,
+            issueCode: 'duplicate_existing_member',
+            severity: 'review',
+            status: 'open',
+            summarySafeText: `${m.memberRowRef} (${m.groupRef} แถว ${m.sourceRow}): พบชื่อตรงกับทะเบียนสมาชิกเดิม (${matchedExisting.memberCode}) — รอคนตรวจสอบก่อนเชื่อมโยง`,
+            proposedValueJson: {
+              existingMemberId: matchedExisting.id,
+              existingMemberCode: matchedExisting.memberCode,
+            },
+          });
+        }
+
+        // Only bucket by fullName when fullName exists; never treat same nickname alone as same person
+        if (normFullName) {
+          const nameKey = sha256Hex(`${normFullName}|${nn.replace(/\s+/g, ' ')}`).slice(0, 12);
+          const bucket = stagingMemberBuckets.get(nameKey) ?? [];
+          bucket.push({ id: sm!.id, memberRowRef: m.memberRowRef, groupRef: m.groupRef });
+          stagingMemberBuckets.set(nameKey, bucket);
+        }
       }
     }
 
+    const duplicateCandidateMemberIds: string[] = [];
     for (const bucket of stagingMemberBuckets.values()) {
       const distinctGroups = new Set(bucket.map((b) => b.groupRef));
       if (distinctGroups.size > 1) {
         const first = bucket[0]!;
+        duplicateCandidateMemberIds.push(first.id);
         const peerRefs = bucket
           .slice(1)
           .map((b) => `${b.memberRowRef}/${b.groupRef}`)
@@ -381,6 +563,18 @@ export async function stageImportBatch(
           },
         });
       }
+    }
+
+    if (duplicateCandidateMemberIds.length > 0) {
+      await tdb
+        .update(stagingMemberRows)
+        .set({ dataStatus: 'pending_review', updatedAt: new Date() })
+        .where(
+          and(
+            inArray(stagingMemberRows.id, duplicateCandidateMemberIds),
+            eq(stagingMemberRows.dataStatus, 'raw')
+          )
+        );
     }
 
     if (dqRows.length > 0) {
@@ -568,6 +762,32 @@ export async function resolveDataQualityIssue(
     .where(eq(dataQualityIssues.id, input.issueId))
     .returning();
 
+  if (issue.targetType === 'staging_member') {
+    if (input.decision === 'approved_fix' || input.decision === 'resolved') {
+      await db
+        .update(stagingMemberRows)
+        .set({ dataStatus: 'approved', updatedAt: new Date() })
+        .where(
+          and(
+            eq(stagingMemberRows.id, issue.targetId),
+            inArray(stagingMemberRows.dataStatus, ['conflict', 'pending_review']),
+            isNull(stagingMemberRows.promotedMemberId)
+          )
+        );
+    } else if (input.decision === 'rejected') {
+      await db
+        .update(stagingMemberRows)
+        .set({ dataStatus: 'rejected', updatedAt: new Date() })
+        .where(
+          and(
+            eq(stagingMemberRows.id, issue.targetId),
+            inArray(stagingMemberRows.dataStatus, ['conflict', 'pending_review']),
+            isNull(stagingMemberRows.promotedMemberId)
+          )
+        );
+    }
+  }
+
   await recordSecurityAudit(db, {
     actorUserId: actor.user.id,
     action: 'dq_issue_resolved',
@@ -644,6 +864,170 @@ export async function confirmCandidateLocation(
   });
 }
 
+async function promoteStagingMembersForGroup(
+  tdb: FaithMapDb,
+  batchId: string,
+  stagingGroupId: string,
+  targetGroupId: string
+): Promise<{
+  promotedMembersCount: number;
+  promotedGrowthRecordsCount: number;
+  skippedIncompleteMembers: number;
+}> {
+  const sMembers = await tdb
+    .select()
+    .from(stagingMemberRows)
+    .where(
+      and(
+        eq(stagingMemberRows.stagingGroupId, stagingGroupId),
+        isNull(stagingMemberRows.promotedMemberId)
+      )
+    );
+
+  let promotedMembersCount = 0;
+  let promotedGrowthRecordsCount = 0;
+  let skippedIncompleteMembers = 0;
+
+  for (const sm of sMembers) {
+    if (sm.dataStatus === 'rejected') {
+      continue;
+    }
+    if (
+      (!sm.fullNameRaw && !sm.nicknameRaw) ||
+      sm.dataStatus === 'incomplete' ||
+      sm.dataStatus === 'conflict' ||
+      sm.dataStatus === 'pending_review'
+    ) {
+      skippedIncompleteMembers++;
+      continue;
+    }
+
+    const [existingByCode] = await tdb
+      .select({ id: members.id, verificationStatus: members.verificationStatus })
+      .from(members)
+      .where(eq(members.memberCode, sm.memberRowRef))
+      .limit(1);
+
+    let targetMemberId: string;
+    if (existingByCode) {
+      // Never overwrite existing (especially verified) member records on re-import
+      targetMemberId = existingByCode.id;
+    } else {
+      const extras = extractMemberExtras(sm.rawCellsJson);
+      const [createdMember] = await tdb
+        .insert(members)
+        .values({
+          memberCode: sm.memberRowRef,
+          fullName: sm.fullNameRaw,
+          nickname: sm.nicknameRaw,
+          displayName: sm.nicknameRaw ?? sm.fullNameRaw ?? sm.memberRowRef,
+          ageRaw: sm.ageRaw,
+          occupationRaw: sm.occupationRaw,
+          locationTextRaw: sm.locationRaw,
+          sourceSequenceNo: extras.sourceSequenceNo,
+          studyWorkplaceRaw: extras.studyWorkplaceRaw,
+          familyStatusRaw: extras.familyStatusRaw,
+          verificationStatus: sm.fullNameRaw ? 'pending_review' : 'unverified',
+          sourceBatchId: batchId,
+          sourceRowRef: sm.memberRowRef,
+          sourceProvenance: {
+            sourceFile: sm.sourceFile,
+            sourceSheet: sm.sourceSheet,
+            sourceRow: sm.sourceRow,
+            rawCells: sm.rawCellsJson,
+          },
+        })
+        .returning();
+      targetMemberId = createdMember!.id;
+    }
+
+    const [existingLink] = await tdb
+      .select({ id: groupMemberships.id })
+      .from(groupMemberships)
+      .where(
+        and(
+          eq(groupMemberships.groupId, targetGroupId),
+          eq(groupMemberships.memberId, targetMemberId)
+        )
+      )
+      .limit(1);
+
+    if (!existingLink) {
+      await tdb.insert(groupMemberships).values({
+        groupId: targetGroupId,
+        memberId: targetMemberId,
+        membershipRole: 'member',
+        isActive: true,
+      });
+    }
+
+    await tdb
+      .update(stagingMemberRows)
+      .set({ promotedMemberId: targetMemberId, dataStatus: 'promoted', updatedAt: new Date() })
+      .where(eq(stagingMemberRows.id, sm.id));
+
+    const growth = extractGrowthFields(sm.rawCellsJson);
+    const hasAnyGrowth = Boolean(
+      growth.conversionDateRaw ||
+        growth.responseAttitudeRaw ||
+        growth.groupAttendanceLevelRaw ||
+        growth.discipleshipGoalRaw ||
+        growth.targetTimeframeRaw ||
+        growth.disciplerNameRaw
+    );
+    if (hasAnyGrowth) {
+      const [existingGrowth] = await tdb
+        .select({ id: memberGrowthRecords.id })
+        .from(memberGrowthRecords)
+        .where(
+          and(
+            eq(memberGrowthRecords.memberId, targetMemberId),
+            eq(memberGrowthRecords.sourceBatchId, batchId),
+            eq(memberGrowthRecords.sourceFile, sm.sourceFile),
+            eq(memberGrowthRecords.sourceSheet, sm.sourceSheet),
+            eq(memberGrowthRecords.sourceRow, sm.sourceRow)
+          )
+        )
+        .limit(1);
+
+      if (!existingGrowth) {
+        const rawCellsEntries = Object.entries(sm.rawCellsJson ?? {})
+          .filter(([k]) => !k.startsWith('__'))
+          .map(([col, value]) => ({ col, value }));
+        const isIncompleteGoal = Boolean(
+          growth.discipleshipGoalRaw && (!growth.targetTimeframeRaw || !growth.disciplerNameRaw)
+        );
+        await tdb.insert(memberGrowthRecords).values({
+          memberId: targetMemberId,
+          groupId: targetGroupId,
+          conversionDateRaw: growth.conversionDateRaw,
+          responseAttitudeRaw: growth.responseAttitudeRaw,
+          groupAttendanceLevelRaw: growth.groupAttendanceLevelRaw,
+          discipleshipGoalRaw: growth.discipleshipGoalRaw,
+          targetTimeframeRaw: growth.targetTimeframeRaw,
+          disciplerNameRaw: growth.disciplerNameRaw,
+          disciplerAssignmentId: null,
+          verificationStatus: isIncompleteGoal ? 'INCOMPLETE' : 'RAW',
+          sourceBatchId: batchId,
+          sourceFile: sm.sourceFile,
+          sourceSheet: sm.sourceSheet,
+          sourceRow: sm.sourceRow,
+          rawCellsJson: rawCellsEntries,
+        });
+        promotedGrowthRecordsCount++;
+      }
+    }
+
+    promotedMembersCount++;
+  }
+
+  return {
+    promotedMembersCount,
+    promotedGrowthRecordsCount,
+    skippedIncompleteMembers,
+  };
+}
+
 export async function promoteStagingBatch(
   db: FaithMapDb,
   actor: ActorContext,
@@ -667,11 +1051,54 @@ export async function promoteStagingBatch(
     const careMapRows = await tdb.select().from(careBodyMappings);
     const careToBody = new Map(careMapRows.map((c) => [c.careCodeRaw, c.bodyId]));
 
+    const summaryObj = (batch.summaryJson ?? {}) as {
+      groupExtrasByRef?: Record<
+        string,
+        { teamName?: string | null; mapUrlRaw?: string | null; groupPhotoUrl?: string | null }
+      >;
+    };
+    const groupExtrasByRef = summaryObj.groupExtrasByRef ?? {};
+
     let promotedGroupsCount = 0;
     let promotedMembersCount = 0;
+    let promotedGrowthRecordsCount = 0;
     let skippedIncompleteMembers = 0;
+    const newlyPromotedStagingGroupIds = new Set<string>();
 
     for (const sg of sGroups) {
+      newlyPromotedStagingGroupIds.add(sg.id);
+      const extras = groupExtrasByRef[sg.groupRef] ?? {};
+      const teamName = extras.teamName ?? null;
+      const mapUrlRaw = extras.mapUrlRaw ?? null;
+      const groupPhotoUrl = extras.groupPhotoUrl ?? null;
+
+      let resolvedCareId: string | null = null;
+      const trimmedCareCode = sg.careCodeRaw?.trim() || '';
+      if (trimmedCareCode && trimmedCareCode !== '-') {
+        const [existingCare] = await tdb
+          .select({ id: cares.id })
+          .from(cares)
+          .where(eq(cares.careCode, trimmedCareCode))
+          .limit(1);
+        if (existingCare) {
+          resolvedCareId = existingCare.id;
+        } else {
+          const [createdCare] = await tdb
+            .insert(cares)
+            .values({
+              careCode: trimmedCareCode,
+              careName: sg.careLabelRaw?.trim() || null,
+              teamName,
+              bodyId: null,
+              status: 'provisional',
+              sourceBatchId: batchId,
+              sourceRef: sg.groupRef,
+            })
+            .returning();
+          resolvedCareId = createdCare?.id ?? null;
+        }
+      }
+
       const mappedBodyId = sg.careCodeRaw ? careToBody.get(sg.careCodeRaw) ?? null : null;
       const [confirmedLoc] = await tdb
         .select()
@@ -684,27 +1111,56 @@ export async function promoteStagingBatch(
         );
 
       const hasCoords = Boolean(confirmedLoc);
+      const regRawTrimmed = sg.registeredTotalRaw?.trim() ?? '';
+      const registeredTotalInt =
+        regRawTrimmed && /^\d+$/.test(regRawTrimmed) ? Number(regRawTrimmed) : null;
+
+      let groupVerificationStatus:
+        | 'RAW'
+        | 'NORMALIZED'
+        | 'PENDING_REVIEW'
+        | 'CONFLICT'
+        | 'INCOMPLETE' = 'RAW';
+      if (sg.dataStatus === 'conflict') {
+        groupVerificationStatus = 'CONFLICT';
+      } else if (sg.dataStatus === 'pending_review') {
+        groupVerificationStatus = 'PENDING_REVIEW';
+      } else if (!sg.districtNormalized || !hasCoords || !sg.meetingDayRaw) {
+        groupVerificationStatus = 'INCOMPLETE';
+      } else if (sg.districtNormalized) {
+        groupVerificationStatus = 'NORMALIZED';
+      }
+
       const [createdGroup] = await tdb
         .insert(houseMissionGroups)
         .values({
           groupCode: sg.groupRef,
           bodyId: mappedBodyId,
+          careId: resolvedCareId,
+          teamName,
           nameTh: sg.groupNameFromSheetRaw,
           groupNameFromSheet: sg.groupNameFromSheetRaw,
           formTitle: sg.formTitleRaw,
           careCodeRaw: sg.careCodeRaw,
+          registeredTotalRaw: sg.registeredTotalRaw ?? null,
+          registeredTotalInt,
           district: sg.districtNormalized ?? sg.districtRaw ?? 'ไม่ระบุอำเภอ',
+          districtRaw: sg.districtRaw ?? null,
           subdistrict: sg.subdistrictRaw,
           village: sg.villageRaw,
           addressSummary: sg.meetingPlaceRaw,
           latitude: confirmedLoc?.latitude ?? null,
           longitude: confirmedLoc?.longitude ?? null,
+          mapUrlRaw,
+          groupPhotoUrl,
           meetingDayOfWeek: sg.meetingDayRaw ? parseThaiWeekday(sg.meetingDayRaw) : null,
+          meetingDayRaw: sg.meetingDayRaw ?? null,
           meetingTimeLocal: null,
           meetingTimeRaw: [sg.meetingTimeStartRaw, sg.meetingTimeEndRaw].filter(Boolean).join(' - ') || null,
           status: 'active',
           assignmentStatus: mappedBodyId ? 'assigned' : 'pending_assignment',
           locationStatus: hasCoords ? 'verified' : 'pending_location',
+          verificationStatus: groupVerificationStatus,
           sourceBatchId: batchId,
           sourceRef: sg.groupRef,
         })
@@ -745,56 +1201,34 @@ export async function promoteStagingBatch(
         });
       }
 
-      const sMembers = await tdb
-        .select()
-        .from(stagingMemberRows)
-        .where(
-          and(
-            eq(stagingMemberRows.stagingGroupId, sg.id),
-            isNull(stagingMemberRows.promotedMemberId)
-          )
-        );
+      const pass1Result = await promoteStagingMembersForGroup(tdb, batchId, sg.id, createdGroup!.id);
+      promotedMembersCount += pass1Result.promotedMembersCount;
+      promotedGrowthRecordsCount += pass1Result.promotedGrowthRecordsCount;
+      skippedIncompleteMembers += pass1Result.skippedIncompleteMembers;
+    }
 
-      for (const sm of sMembers) {
-        if (!sm.fullNameRaw && !sm.nicknameRaw) {
-          skippedIncompleteMembers++;
-          continue;
-        }
-        const [createdMember] = await tdb
-          .insert(members)
-          .values({
-            memberCode: sm.memberRowRef,
-            fullName: sm.fullNameRaw,
-            nickname: sm.nicknameRaw,
-            displayName: sm.nicknameRaw ?? sm.fullNameRaw ?? sm.memberRowRef,
-            ageRaw: sm.ageRaw,
-            occupationRaw: sm.occupationRaw,
-            locationTextRaw: sm.locationRaw,
-            verificationStatus: sm.fullNameRaw ? 'pending_review' : 'unverified',
-            sourceBatchId: batchId,
-            sourceRowRef: sm.memberRowRef,
-            sourceProvenance: {
-              sourceFile: sm.sourceFile,
-              sourceSheet: sm.sourceSheet,
-              sourceRow: sm.sourceRow,
-            },
-          })
-          .returning();
+    // Pass 2: Re-promote newly approved / unpromoted staging members whose parent group was already promoted
+    const alreadyPromotedGroups = await tdb
+      .select({
+        id: stagingGroups.id,
+        promotedGroupId: stagingGroups.promotedGroupId,
+      })
+      .from(stagingGroups)
+      .where(and(eq(stagingGroups.batchId, batchId), isNotNull(stagingGroups.promotedGroupId)));
 
-        await tdb.insert(groupMemberships).values({
-          groupId: createdGroup!.id,
-          memberId: createdMember!.id,
-          membershipRole: 'member',
-          isActive: true,
-        });
-
-        await tdb
-          .update(stagingMemberRows)
-          .set({ promotedMemberId: createdMember!.id, dataStatus: 'promoted', updatedAt: new Date() })
-          .where(eq(stagingMemberRows.id, sm.id));
-
-        promotedMembersCount++;
+    for (const promotedSg of alreadyPromotedGroups) {
+      if (!promotedSg.promotedGroupId || newlyPromotedStagingGroupIds.has(promotedSg.id)) {
+        continue;
       }
+      const pass2Result = await promoteStagingMembersForGroup(
+        tdb,
+        batchId,
+        promotedSg.id,
+        promotedSg.promotedGroupId
+      );
+      promotedMembersCount += pass2Result.promotedMembersCount;
+      promotedGrowthRecordsCount += pass2Result.promotedGrowthRecordsCount;
+      skippedIncompleteMembers += pass2Result.skippedIncompleteMembers;
     }
 
     const nextStatus = skippedIncompleteMembers > 0 ? 'partially_promoted' : 'promoted';
@@ -817,6 +1251,7 @@ export async function promoteStagingBatch(
       metadata: {
         promotedGroupsCount,
         promotedMembersCount,
+        promotedGrowthRecordsCount,
         skippedIncompleteMembers,
       },
     });
@@ -825,6 +1260,7 @@ export async function promoteStagingBatch(
       batch: updatedBatch!,
       promotedGroupsCount,
       promotedMembersCount,
+      promotedGrowthRecordsCount,
       skippedIncompleteMembers,
     };
   });
