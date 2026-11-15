@@ -3,7 +3,7 @@ import type { FaithMapDb } from '@/server/db/client';
 import { teamFieldPoints } from '@/server/db/schema';
 import { KALASIN_TEAM_G_POINTS } from '@/lib/kalasin-field-points';
 import { recordSecurityAudit } from '../audit/service';
-import { isAdmin } from '../authz/policy';
+import { isAdmin, isGlobalMetricsReader } from '../authz/policy';
 import { AppError } from '../errors';
 import type { ActorContext } from '../identity/service';
 
@@ -32,6 +32,10 @@ export async function listTeamFieldPoints(
   actor: ActorContext,
   filters: { teamCode?: string | null; q?: string | null } = {}
 ): Promise<TeamFieldPointView[]> {
+  // Coordinator names and phone numbers are for people who hold a role in the organization.
+  if (!isGlobalMetricsReader(actor) && actor.assignments.length === 0) {
+    throw new AppError(403, 'SCOPE_REQUIRED', 'บัญชีนี้ยังไม่ได้รับหน้าที่ในระบบ จึงยังดูข้อมูลนี้ไม่ได้');
+  }
   const conditions = [];
   if (filters.teamCode?.trim()) {
     conditions.push(eq(teamFieldPoints.teamCode, filters.teamCode.trim()));

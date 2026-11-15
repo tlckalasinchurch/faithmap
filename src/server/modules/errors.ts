@@ -49,3 +49,9 @@ export function toErrorResponseBody(err: unknown): {
     },
   };
 }
+
+/** True for a PostgreSQL unique-key violation (code 23505), also when wrapped by the driver. */
+export function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string }; message?: string } | null;
+  return e?.code === '23505' || e?.cause?.code === '23505' || /duplicate key|unique constraint/i.test(e?.message ?? '');
+}

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
+import { importPayloadSchema } from '@/server/modules/ingestion/payload-schema';
 import {
   assignUnassignedGroupBody,
   confirmCandidateLocation,
   linkStewardAssignmentToUser,
   listIngestionOverview,
-  previewImportPayload,
+  previewImportForActor,
   promoteStagingBatch,
   resolveDataQualityIssue,
   rollbackImportBatch,
@@ -17,59 +18,6 @@ import {
 } from '@/server/modules/ingestion/service';
 
 export const dynamic = 'force-dynamic';
-
-const importPayloadSchema = z.object({
-  sourceArchiveName: z.string().min(1),
-  selectionPolicyVersion: z.string().optional(),
-  groups: z.array(
-    z.object({
-      groupRef: z.string().min(1),
-      groupNameFromSheet: z.string().min(1),
-      formTitle: z.string().nullable().optional(),
-      district: z.string().nullable().optional(),
-      subdistrict: z.string().nullable().optional(),
-      village: z.string().nullable().optional(),
-      meetingDay: z.string().nullable().optional(),
-      meetingTimeStart: z.union([z.string(), z.number()]).nullable().optional(),
-      meetingTimeEnd: z.union([z.string(), z.number()]).nullable().optional(),
-      meetingPlace: z.string().nullable().optional(),
-      leader: z.string().nullable().optional(),
-      coordinator: z.string().nullable().optional(),
-      careLabel: z.string().nullable().optional(),
-      careCode: z.string().nullable().optional(),
-      teamName: z.string().nullable().optional(),
-      registeredTotal: z.union([z.string(), z.number()]).nullable().optional(),
-      mapUrlRaw: z.string().nullable().optional(),
-      groupPhotoUrl: z.string().nullable().optional(),
-      sourceFile: z.string().min(1),
-      sourceSheet: z.string().min(1),
-    })
-  ),
-  members: z.array(
-    z.object({
-      memberRowRef: z.string().min(1),
-      groupRef: z.string().min(1),
-      sequenceRaw: z.union([z.string(), z.number()]).nullable().optional(),
-      fullNameRaw: z.string().nullable().optional(),
-      nicknameRaw: z.string().nullable().optional(),
-      ageRaw: z.union([z.string(), z.number()]).nullable().optional(),
-      occupationRaw: z.string().nullable().optional(),
-      studyWorkplaceRaw: z.string().nullable().optional(),
-      familyStatusRaw: z.string().nullable().optional(),
-      locationRaw: z.string().nullable().optional(),
-      salvationDateRaw: z.string().nullable().optional(),
-      responseAttitudeRaw: z.string().nullable().optional(),
-      groupAttendanceLevelRaw: z.string().nullable().optional(),
-      discipleshipGoalRaw: z.string().nullable().optional(),
-      targetTimeframeRaw: z.string().nullable().optional(),
-      disciplerNameRaw: z.string().nullable().optional(),
-      sourceFile: z.string().min(1),
-      sourceSheet: z.string().min(1),
-      sourceRow: z.number().int().min(1),
-      rawCells: z.record(z.unknown()).optional(),
-    })
-  ),
-});
 
 const ingestionActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('preview'), payload: importPayloadSchema }),
@@ -137,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
     if (data.action === 'preview') {
-      return NextResponse.json({ ok: true, preview: previewImportPayload(data.payload) });
+      return NextResponse.json({ ok: true, preview: previewImportForActor(actor, data.payload) });
     }
     if (data.action === 'stage') {
       const result = await stageImportBatch(db, actor, data.payload);

@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
@@ -14,7 +14,7 @@ import {
   isAdmin,
   isGlobalMetricsReader,
 } from '../authz/policy';
-import { AppError } from '../errors';
+import { AppError, isUniqueViolation } from '../errors';
 import type { ActorContext } from '../identity/service';
 
 export type CareStatus = 'provisional' | 'active' | 'pending_assignment' | 'inactive' | 'archived';
@@ -219,17 +219,25 @@ export async function createProvisionalCare(
     throw new AppError(409, 'CARE_CODE_EXISTS', `มีรหัสแคร์ "${careCode}" อยู่ในระบบแล้ว`);
   }
 
-  const [created] = await db
-    .insert(cares)
-    .values({
-      careCode,
-      careName: input.careName?.trim() || null,
-      teamName: input.teamName?.trim() || null,
-      bodyId,
-      status: input.status ?? 'provisional',
-      notes: input.notes?.trim() || null,
-    })
-    .returning();
+  let created: typeof cares.$inferSelect | undefined;
+  try {
+    [created] = await db
+      .insert(cares)
+      .values({
+        careCode,
+        careName: input.careName?.trim() || null,
+        teamName: input.teamName?.trim() || null,
+        bodyId,
+        status: input.status ?? 'provisional',
+        notes: input.notes?.trim() || null,
+      })
+      .returning();
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new AppError(409, 'CARE_CODE_EXISTS', `มีรหัสแคร์ "${careCode}" อยู่ในระบบแล้ว`);
+    }
+    throw err;
+  }
 
   if (!created) {
     throw new AppError(500, 'CARE_CREATE_FAILED', 'ไม่สามารถบันทึกข้อมูลแคร์ได้');
@@ -362,67 +370,124 @@ export async function assignCareSteward(
 
   const now = new Date();
   const isPrimary = input.isPrimary ?? true;
+  const linkStatus = userId ? 'linked_user' : 'unlinked_pending_account';
 
-  if (isPrimary) {
-    await db
-      .update(assignments)
-      .set({
-        effectiveTo: now,
-        revokedByUserId: actor.user.id,
-        revokedReason: 'เปลี่ยนผู้รับผิดชอบหลักของแคร์',
-        updatedAt: now,
-      })
-      .where(
-        and(
+  // All steps run in one transaction. If the new assignment cannot be saved, the old primary stays.
+  try {
+    return await db.transaction(async (tx) => {
+      const tdb = tx as unknown as FaithMapDb;
+
+      const revokeOtherPrimaries = async (exceptId: string | null) => {
+        const conditions = [
           eq(assignments.scopeType, 'care'),
           eq(assignments.careId, careRow.id),
           eq(assignments.roleType, input.roleType),
           eq(assignments.isPrimary, true),
-          isNull(assignments.effectiveTo)
-        )
+          isNull(assignments.effectiveTo),
+        ];
+        if (exceptId) conditions.push(ne(assignments.id, exceptId));
+        await tdb
+          .update(assignments)
+          .set({
+            effectiveTo: now,
+            revokedByUserId: actor.user.id,
+            revokedReason: 'เปลี่ยนผู้รับผิดชอบหลักของแคร์',
+            updatedAt: now,
+          })
+          .where(and(...conditions));
+      };
+
+      if (userId) {
+        const [existing] = await tdb
+          .select()
+          .from(assignments)
+          .where(
+            and(
+              eq(assignments.scopeType, 'care'),
+              eq(assignments.careId, careRow.id),
+              eq(assignments.userId, userId),
+              eq(assignments.roleType, input.roleType),
+              isNull(assignments.effectiveTo)
+            )
+          )
+          .limit(1);
+        if (existing) {
+          if (existing.isPrimary === isPrimary) return existing; // same request again: no change
+          if (existing.isPrimary && !isPrimary) {
+            throw new AppError(
+              409,
+              'CARE_PRIMARY_DEMOTE',
+              'บัญชีนี้เป็นผู้ดูแลหลักอยู่แล้ว หากต้องการเปลี่ยน กรุณามอบหมายผู้ดูแลหลักคนใหม่แทน'
+            );
+          }
+          await revokeOtherPrimaries(existing.id);
+          const [promoted] = await tdb
+            .update(assignments)
+            .set({ isPrimary: true, updatedAt: now })
+            .where(eq(assignments.id, existing.id))
+            .returning();
+          await recordSecurityAudit(tdb, {
+            actorUserId: actor.user.id,
+            action: 'CARE_STEWARD_PROMOTED',
+            targetType: 'assignment',
+            targetId: existing.id,
+            metadata: { careId: careRow.id, roleType: input.roleType },
+          });
+          return promoted!;
+        }
+      }
+
+      if (isPrimary) await revokeOtherPrimaries(null);
+
+      const [created] = await tdb
+        .insert(assignments)
+        .values({
+          userId,
+          stewardMemberId,
+          stewardDisplayName,
+          linkStatus,
+          sourceRoleLabel: input.sourceRoleLabel?.trim() || null,
+          scopeType: 'care',
+          bodyId: null,
+          careId: careRow.id,
+          groupId: null,
+          roleType: input.roleType,
+          isPrimary,
+          effectiveFrom: now,
+          assignedByUserId: actor.user.id,
+        })
+        .returning();
+
+      if (!created) {
+        throw new AppError(500, 'ASSIGNMENT_CREATE_FAILED', 'ไม่สามารถบันทึกการมอบหมายแคร์ได้');
+      }
+
+      await recordSecurityAudit(tdb, {
+        actorUserId: actor.user.id,
+        action: 'CARE_STEWARD_ASSIGNED',
+        targetType: 'assignment',
+        targetId: created.id,
+        metadata: {
+          careId: careRow.id,
+          careCode: careRow.careCode,
+          roleType: input.roleType,
+          linkStatus,
+          userId,
+        },
+      });
+
+      return created;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new AppError(
+        409,
+        'CARE_PRIMARY_CONFLICT',
+        'มีการเปลี่ยนผู้ดูแลแคร์พร้อมกัน กรุณารีเฟรชหน้าจอแล้วลองอีกครั้ง'
       );
+    }
+    throw err;
   }
-
-  const linkStatus = userId ? 'linked_user' : 'unlinked_pending_account';
-
-  const [created] = await db
-    .insert(assignments)
-    .values({
-      userId,
-      stewardMemberId,
-      stewardDisplayName,
-      linkStatus,
-      sourceRoleLabel: input.sourceRoleLabel?.trim() || null,
-      scopeType: 'care',
-      bodyId: null,
-      careId: careRow.id,
-      groupId: null,
-      roleType: input.roleType,
-      isPrimary,
-      effectiveFrom: now,
-      assignedByUserId: actor.user.id,
-    })
-    .returning();
-
-  if (!created) {
-    throw new AppError(500, 'ASSIGNMENT_CREATE_FAILED', 'ไม่สามารถบันทึกการมอบหมายแคร์ได้');
-  }
-
-  await recordSecurityAudit(db, {
-    actorUserId: actor.user.id,
-    action: 'CARE_STEWARD_ASSIGNED',
-    targetType: 'assignment',
-    targetId: created.id,
-    metadata: {
-      careId: careRow.id,
-      careCode: careRow.careCode,
-      roleType: input.roleType,
-      linkStatus,
-      userId,
-    },
-  });
-
-  return created;
 }
 
 export async function revokeCareAssignment(

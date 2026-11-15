@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
+  attendanceRecords,
   bodies,
   candidateLocationMatches,
   careBodyMappings,
@@ -20,7 +21,7 @@ import {
   weeklyReports,
 } from '@/server/db/schema';
 import { KALASIN_TEAM_G_POINTS } from '@/lib/kalasin-field-points';
-import { AppError } from '../errors';
+import { AppError, isUniqueViolation } from '../errors';
 import { recordSecurityAudit } from '../audit/service';
 import { isAdmin, isBodyLeaderForBody } from '../authz/policy';
 import type { ActorContext } from '../identity/service';
@@ -172,6 +173,12 @@ function assertAdminOnly(actor: ActorContext, message: string): void {
   }
 }
 
+/** Preview needs admin rights and is not open to every signed-in user. */
+export function previewImportForActor(actor: ActorContext, payload: ImportBatchPayload) {
+  assertAdminOnly(actor, 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถตรวจสอบไฟล์นำเข้าได้');
+  return previewImportPayload(payload);
+}
+
 export function previewImportPayload(payload: ImportBatchPayload) {
   const canonicalJson = JSON.stringify({
     sourceArchiveName: payload.sourceArchiveName,
@@ -281,7 +288,9 @@ export async function stageImportBatch(
     };
   }
 
-  const createdBatch = await db.transaction(async (tx) => {
+  let createdBatch: typeof importBatches.$inferSelect;
+  try {
+    createdBatch = await db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
     const [batch] = await tdb
       .insert(importBatches)
@@ -598,13 +607,28 @@ export async function stageImportBatch(
     });
 
     return batch!;
-  });
+    });
+  } catch (err) {
+    // Two requests with the same file at the same time: the second one gets the first batch.
+    if (isUniqueViolation(err)) {
+      const [raced] = await db
+        .select()
+        .from(importBatches)
+        .where(eq(importBatches.fileSha256, preview.fileSha256));
+      if (raced) return { idempotentHit: true, batch: raced, preview };
+    }
+    throw err;
+  }
 
   return { idempotentHit: false, batch: createdBatch, preview };
 }
 
 export async function listIngestionOverview(db: FaithMapDb, actor: ActorContext) {
   const admin = isAdmin(actor);
+  // The overview shows import queues and the whole Body list. Only admins and Body Leaders need it.
+  if (!admin && actor.bodyLeaderBodyIds.size === 0) {
+    throw new AppError(403, 'SCOPE_FORBIDDEN', 'เฉพาะผู้ดูแลระบบและหัวหน้าบอดี้เท่านั้นที่ดูหน้านี้ได้');
+  }
   const batches = admin
     ? await db.select().from(importBatches).orderBy(desc(importBatches.createdAt))
     : [];
@@ -864,6 +888,19 @@ export async function confirmCandidateLocation(
   });
 }
 
+function normName(v: string | null | undefined): string {
+  return (v ?? '').trim().replace(/\s+/g, ' ');
+}
+
+/** Same person only when the names agree. A staged row with a full name needs the same full name. */
+function isSamePerson(
+  existing: { fullName: string | null; nickname: string | null },
+  staged: { fullNameRaw: string | null; nicknameRaw: string | null }
+): boolean {
+  if (staged.fullNameRaw) return normName(existing.fullName) === normName(staged.fullNameRaw);
+  return !normName(existing.fullName) && normName(existing.nickname) === normName(staged.nicknameRaw);
+}
+
 async function promoteStagingMembersForGroup(
   tdb: FaithMapDb,
   batchId: string,
@@ -903,14 +940,50 @@ async function promoteStagingMembersForGroup(
     }
 
     const [existingByCode] = await tdb
-      .select({ id: members.id, verificationStatus: members.verificationStatus })
+      .select({
+        id: members.id,
+        verificationStatus: members.verificationStatus,
+        fullName: members.fullName,
+        nickname: members.nickname,
+      })
       .from(members)
       .where(eq(members.memberCode, sm.memberRowRef))
       .limit(1);
 
     let targetMemberId: string;
     if (existingByCode) {
-      // Never overwrite existing (especially verified) member records on re-import
+      // A member code is a source row reference. Reuse the member only when it is clearly the same
+      // person. A different name means a code collision: never merge two people automatically.
+      if (!isSamePerson(existingByCode, sm)) {
+        await tdb
+          .update(stagingMemberRows)
+          .set({ dataStatus: 'conflict', updatedAt: new Date() })
+          .where(eq(stagingMemberRows.id, sm.id));
+        const [openIssue] = await tdb
+          .select({ id: dataQualityIssues.id })
+          .from(dataQualityIssues)
+          .where(
+            and(
+              eq(dataQualityIssues.targetId, sm.id),
+              eq(dataQualityIssues.issueCode, 'member_code_collision')
+            )
+          )
+          .limit(1);
+        if (!openIssue) {
+          await tdb.insert(dataQualityIssues).values({
+            batchId,
+            targetType: 'staging_member',
+            targetId: sm.id,
+            issueCode: 'member_code_collision',
+            severity: 'blocking',
+            status: 'open',
+            summarySafeText: `${sm.memberRowRef}: รหัสสมาชิกซ้ำกับสมาชิกเดิมที่ชื่อไม่ตรงกัน — ต้องแก้รหัสต้นฉบับก่อนนำเข้าใหม่`,
+            proposedValueJson: { existingMemberId: existingByCode.id },
+          });
+        }
+        skippedIncompleteMembers++;
+        continue;
+      }
       targetMemberId = existingByCode.id;
     } else {
       const extras = extractMemberExtras(sm.rawCellsJson);
@@ -1041,6 +1114,26 @@ export async function promoteStagingBatch(
     throw new AppError(409, 'BATCH_ROLLED_BACK', 'Batch นี้ถูก Rollback ไปแล้ว');
   }
 
+  try {
+    return await promoteBatchTransaction(db, actor, batch, batchId);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new AppError(
+        409,
+        'PROMOTION_CONFLICT',
+        'นำเข้าไม่สำเร็จ เพราะมีรหัสกลุ่มหรือรหัสสมาชิกซ้ำกับข้อมูลที่มีอยู่แล้ว ระบบยังไม่ได้บันทึกอะไรจาก Batch นี้'
+      );
+    }
+    throw err;
+  }
+}
+
+async function promoteBatchTransaction(
+  db: FaithMapDb,
+  actor: ActorContext,
+  batch: typeof importBatches.$inferSelect,
+  batchId: string
+) {
   return db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
     const sGroups = await tdb
@@ -1182,7 +1275,7 @@ export async function promoteStagingBatch(
           sourceRoleLabel: 'ผู้รับผิดชอบกลุ่ม (ต้นฉบับ)',
           scopeType: 'group',
           groupId: createdGroup!.id,
-          roleType: 'care_leader',
+          roleType: 'group_leader', // "ผู้รับผิดชอบกลุ่ม" is the Group Leader (PRD glossary)
           isPrimary: true,
           assignedByUserId: actor.user.id,
         });
@@ -1266,6 +1359,67 @@ export async function promoteStagingBatch(
   });
 }
 
+/** Counts what a rollback must not delete. Only counts and booleans leave this function. */
+async function findRollbackProtection(
+  tdb: FaithMapDb,
+  batchId: string,
+  promotedGroupIds: string[]
+): Promise<{
+  protected: boolean;
+  verifiedMembers: number;
+  membersWithHistory: number;
+  linkedAssignments: number;
+}> {
+  const batchMembers = await tdb
+    .select({ id: members.id, verificationStatus: members.verificationStatus })
+    .from(members)
+    .where(eq(members.sourceBatchId, batchId));
+  const verifiedMembers = batchMembers.filter((m) => m.verificationStatus === 'verified').length;
+
+  const ids = batchMembers.map((m) => m.id);
+  const withHistory = new Set<string>();
+  for (let i = 0; i < ids.length; i += 5000) {
+    const chunk = ids.slice(i, i + 5000);
+    const [att, growth, accounts, stewards] = await Promise.all([
+      tdb.select({ id: attendanceRecords.memberId }).from(attendanceRecords).where(inArray(attendanceRecords.memberId, chunk)),
+      tdb
+        .select({ id: memberGrowthRecords.memberId })
+        .from(memberGrowthRecords)
+        .where(and(inArray(memberGrowthRecords.memberId, chunk), ne(memberGrowthRecords.sourceBatchId, batchId))),
+      tdb.select({ id: users.memberId }).from(users).where(inArray(users.memberId, chunk)),
+      tdb.select({ id: assignments.stewardMemberId }).from(assignments).where(inArray(assignments.stewardMemberId, chunk)),
+    ]);
+    for (const r of [...att, ...growth, ...accounts, ...stewards]) if (r.id) withHistory.add(r.id);
+  }
+
+  // Memberships in groups outside this batch.
+  for (let i = 0; i < ids.length; i += 5000) {
+    const chunk = ids.slice(i, i + 5000);
+    const rows = await tdb
+      .select({ id: groupMemberships.memberId, groupId: groupMemberships.groupId })
+      .from(groupMemberships)
+      .where(inArray(groupMemberships.memberId, chunk));
+    const own = new Set(promotedGroupIds);
+    for (const r of rows) if (!own.has(r.groupId)) withHistory.add(r.id);
+  }
+
+  let linkedAssignments = 0;
+  if (promotedGroupIds.length > 0) {
+    const linked = await tdb
+      .select({ id: assignments.id })
+      .from(assignments)
+      .where(and(inArray(assignments.groupId, promotedGroupIds), isNotNull(assignments.userId)));
+    linkedAssignments = linked.length;
+  }
+
+  return {
+    protected: verifiedMembers > 0 || withHistory.size > 0 || linkedAssignments > 0,
+    verifiedMembers,
+    membersWithHistory: withHistory.size,
+    linkedAssignments,
+  };
+}
+
 export async function rollbackImportBatch(
   db: FaithMapDb,
   actor: ActorContext,
@@ -1295,7 +1449,11 @@ export async function rollbackImportBatch(
       hasDependentReports = linkedReports.length > 0;
     }
 
-    if (hasDependentReports) {
+    // Data that a person or a later process now depends on must never be deleted by a rollback.
+    const protection = await findRollbackProtection(tdb, batchId, promotedGroupIds);
+    const mustArchive = hasDependentReports || protection.protected;
+
+    if (mustArchive) {
       await tdb
         .update(houseMissionGroups)
         .set({ status: 'archived', updatedAt: new Date() })
@@ -1321,12 +1479,18 @@ export async function rollbackImportBatch(
       targetType: 'import_batch',
       targetId: batchId,
       reason,
-      metadata: { archivedInsteadOfDeleted: hasDependentReports },
+      metadata: {
+        archivedInsteadOfDeleted: mustArchive,
+        hasDependentReports,
+        verifiedMembers: protection.verifiedMembers,
+        membersWithHistory: protection.membersWithHistory,
+        linkedAssignments: protection.linkedAssignments,
+      },
     });
 
     return {
       batch: updatedBatch!,
-      archivedInsteadOfDeleted: hasDependentReports,
+      archivedInsteadOfDeleted: mustArchive,
     };
   });
 }
@@ -1449,6 +1613,13 @@ export async function assignUnassignedGroupBody(
 ) {
   assertAdminOnly(actor, 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถจัดสรรบอดี้ให้กลุ่มได้');
 
+  const [bodyRow] = await db.select({ id: bodies.id }).from(bodies).where(eq(bodies.id, bodyId)).limit(1);
+  if (!bodyRow) {
+    throw new AppError(404, 'BODY_NOT_FOUND', 'ไม่พบบอดี้ที่ระบุ');
+  }
+
+  // Only a group without a body can be assigned here. A group that already has a Body keeps it:
+  // changing Body changes who can see its members, and that needs the transfer process.
   const [updated] = await db
     .update(houseMissionGroups)
     .set({
@@ -1456,11 +1627,20 @@ export async function assignUnassignedGroupBody(
       assignmentStatus: 'assigned',
       updatedAt: new Date(),
     })
-    .where(eq(houseMissionGroups.id, groupId))
+    .where(and(eq(houseMissionGroups.id, groupId), isNull(houseMissionGroups.bodyId)))
     .returning();
 
   if (!updated) {
-    throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจที่ระบุ');
+    const [exists] = await db
+      .select({ id: houseMissionGroups.id })
+      .from(houseMissionGroups)
+      .where(eq(houseMissionGroups.id, groupId));
+    if (!exists) throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจที่ระบุ');
+    throw new AppError(
+      409,
+      'GROUP_ALREADY_ASSIGNED',
+      'กลุ่มนี้มีบอดี้อยู่แล้ว การย้ายบอดี้ต้องทำผ่านขั้นตอนย้ายบอดี้'
+    );
   }
 
   await recordSecurityAudit(db, {
@@ -1482,6 +1662,42 @@ export async function linkStewardAssignmentToUser(
 ) {
   assertAdminOnly(actor, 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถผูกผู้ดูแลเข้ากับบัญชีผู้ใช้ได้');
 
+  const [target] = await db.select().from(assignments).where(eq(assignments.id, assignmentId));
+  if (!target) {
+    throw new AppError(404, 'ASSIGNMENT_NOT_FOUND', 'ไม่พบรายการมอบหมายผู้ดูแลที่ระบุ');
+  }
+  if (target.effectiveTo || target.userId) {
+    throw new AppError(
+      409,
+      'ASSIGNMENT_ALREADY_LINKED',
+      'รายการนี้ผูกกับบัญชีผู้ใช้แล้วหรือสิ้นสุดแล้ว ไม่สามารถผูกซ้ำได้'
+    );
+  }
+  const [userRow] = await db.select({ id: users.id, status: users.status }).from(users).where(eq(users.id, userId));
+  if (!userRow) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'ไม่พบบัญชีผู้ใช้ที่ระบุ');
+  }
+  if (userRow.status !== 'active' && userRow.status !== 'pending_activation') {
+    throw new AppError(409, 'USER_NOT_ACTIVE', 'บัญชีผู้ใช้นี้ถูกระงับหรือยกเลิกแล้ว');
+  }
+  const sameScope = target.groupId
+    ? eq(assignments.groupId, target.groupId)
+    : target.careId
+      ? eq(assignments.careId, target.careId)
+      : eq(assignments.bodyId, target.bodyId!);
+  const [dup] = await db
+    .select({ id: assignments.id })
+    .from(assignments)
+    .where(and(eq(assignments.userId, userId), sameScope, isNull(assignments.effectiveTo)))
+    .limit(1);
+  if (dup) {
+    throw new AppError(
+      409,
+      'USER_ALREADY_ASSIGNED',
+      'บัญชีนี้มีหน้าที่ในขอบเขตเดียวกันอยู่แล้ว กรุณาตรวจสอบก่อนผูกเพิ่ม'
+    );
+  }
+
   const [updated] = await db
     .update(assignments)
     .set({
@@ -1489,11 +1705,11 @@ export async function linkStewardAssignmentToUser(
       linkStatus: 'linked_user',
       updatedAt: new Date(),
     })
-    .where(eq(assignments.id, assignmentId))
+    .where(and(eq(assignments.id, assignmentId), isNull(assignments.userId)))
     .returning();
 
   if (!updated) {
-    throw new AppError(404, 'ASSIGNMENT_NOT_FOUND', 'ไม่พบรายการมอบหมายผู้ดูแลที่ระบุ');
+    throw new AppError(409, 'ASSIGNMENT_ALREADY_LINKED', 'รายการนี้ถูกผูกกับบัญชีไปแล้ว');
   }
 
   await recordSecurityAudit(db, {

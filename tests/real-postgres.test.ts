@@ -10,6 +10,8 @@ import * as schema from '@/server/db/schema';
 import { createDbRuntimeFromEnv, type DbRuntime } from '@/server/db/client';
 import { assertMigrated, countAppliedMigrations, ensureSchema, EXPECTED_MIGRATION_COUNT } from '@/server/db/migrate';
 import { createFirstSuperAdmin } from '@/server/modules/identity/bootstrap';
+import { stageImportBatch } from '@/server/modules/ingestion/service';
+import { assignCareSteward, createProvisionalCare } from '@/server/modules/cares/service';
 import { ensureSeeded, SEED_IDS } from '@/server/db/seed';
 import { buildActorContext, loginWithPassword } from '@/server/modules/identity/service';
 import { verifyLineIdToken, type LineIdTokenClaims } from '@/server/modules/line-identity/verifier';
@@ -55,7 +57,7 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
     process.env.DATABASE_URL = URL_UNDER_TEST;
     rt = createDbRuntimeFromEnv();
     expect(rt.driver).toBe('postgres');
-    await rt.execRaw('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await rt.execRaw('DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;');
     await ensureSchema(rt);
     await ensureSeeded(rt.db);
   }, 120_000);
@@ -173,6 +175,43 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
     await expect(rt.db.execute(sql`DELETE FROM security_audit_logs`)).rejects.toThrow();
     const r = await rt.db.execute(sql`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname LIKE 'trg_%_immutable' AND NOT tgisinternal`);
     expect((r as unknown as { rows: Array<{ n: number }> }).rows[0]!.n).toBe(3);
+  });
+
+  it('Phase 3B: two identical imports at once give one batch and one idempotent hit', async () => {
+    const [su] = await rt.db.select().from(schema.users).where(eq(schema.users.id, SEED_IDS.users.admin));
+    const admin = await buildActorContext(rt.db, su!);
+    const body = {
+      sourceArchiveName: 'race.xlsx',
+      groups: [{ groupRef: 'G-RACE-1', groupNameFromSheet: 'กลุ่มแข่ง', sourceFile: 'race.xlsx', sourceSheet: 'S1' }],
+      members: [],
+    };
+    const [a, b] = await Promise.all([stageImportBatch(rt.db, admin, body), stageImportBatch(rt.db, admin, body)]);
+    expect(a.batch.id).toBe(b.batch.id);
+    expect([a.idempotentHit, b.idempotentHit].sort()).toEqual([false, true]);
+  });
+
+  it('Phase 3B: two creations of the same care code at once give one care and one clear conflict', async () => {
+    const [su] = await rt.db.select().from(schema.users).where(eq(schema.users.id, SEED_IDS.users.admin));
+    const admin = await buildActorContext(rt.db, su!);
+    const results = await Promise.allSettled([
+      createProvisionalCare(rt.db, admin, { careCode: 'C-RACE-1' }),
+      createProvisionalCare(rt.db, admin, { careCode: 'C-RACE-1' }),
+    ]);
+    const codes = results.map((r) => (r.status === 'rejected' ? (r.reason as { code?: string }).code : 'ok')).sort();
+    expect(codes).toEqual(['CARE_CODE_EXISTS', 'ok']);
+  });
+
+  it('Phase 3B: two primary steward changes at once leave exactly one active primary', async () => {
+    const [su] = await rt.db.select().from(schema.users).where(eq(schema.users.id, SEED_IDS.users.admin));
+    const admin = await buildActorContext(rt.db, su!);
+    const care = await createProvisionalCare(rt.db, admin, { careCode: 'C-RACE-2' });
+    await Promise.allSettled([
+      assignCareSteward(rt.db, admin, { careId: care.id, userId: SEED_IDS.users.leaderNongkung, roleType: 'care_leader', isPrimary: true }),
+      assignCareSteward(rt.db, admin, { careId: care.id, userId: SEED_IDS.users.leaderNonthan, roleType: 'care_leader', isPrimary: true }),
+    ]);
+    const rows = await rt.db.select().from(schema.assignments).where(eq(schema.assignments.careId, care.id));
+    const activePrimary = rows.filter((r) => r.effectiveTo === null && r.isPrimary);
+    expect(activePrimary).toHaveLength(1);
   });
 
   it('creates exactly one super_admin when two bootstrap runs race (run last: it changes seed roles)', async () => {
