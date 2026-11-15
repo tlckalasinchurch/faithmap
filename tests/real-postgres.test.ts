@@ -12,6 +12,8 @@ import { assertMigrated, countAppliedMigrations, ensureSchema, EXPECTED_MIGRATIO
 import { createFirstSuperAdmin } from '@/server/modules/identity/bootstrap';
 import { stageImportBatch } from '@/server/modules/ingestion/service';
 import { assignCareSteward, createProvisionalCare } from '@/server/modules/cares/service';
+import { assignLeadershipRole, createGroup } from '@/server/modules/organization/service';
+import { ensureActiveReportingPeriod, submitReport, updateReportIfCurrent } from '@/server/modules/reporting/service';
 import { ensureSeeded, SEED_IDS } from '@/server/db/seed';
 import { buildActorContext, loginWithPassword } from '@/server/modules/identity/service';
 import { verifyLineIdToken, type LineIdTokenClaims } from '@/server/modules/line-identity/verifier';
@@ -212,6 +214,27 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
     const rows = await rt.db.select().from(schema.assignments).where(eq(schema.assignments.careId, care.id));
     const activePrimary = rows.filter((r) => r.effectiveTo === null && r.isPrimary);
     expect(activePrimary).toHaveLength(1);
+  });
+
+  it('Authz review: two decisions on the same copy of a report at once leave exactly one winner', async () => {
+    const [su] = await rt.db.select().from(schema.users).where(eq(schema.users.id, SEED_IDS.users.admin));
+    const admin = await buildActorContext(rt.db, su!);
+    const group = await createGroup(rt.db, admin, { groupCode: 'RACE-RPT', bodyId: SEED_IDS.bodies.north, nameTh: 'กลุ่มแข่งรายงาน', district: 'เมืองกาฬสินธุ์' });
+    await assignLeadershipRole(rt.db, admin, { userId: SEED_IDS.users.standbyLeaderSouth, scopeType: 'group', groupId: group.id, roleType: 'group_leader' });
+    const [leaderRow] = await rt.db.select().from(schema.users).where(eq(schema.users.id, SEED_IDS.users.standbyLeaderSouth));
+    const leader = await buildActorContext(rt.db, leaderRow!);
+    const period = await ensureActiveReportingPeriod(rt.db);
+    await submitReport(rt.db, leader, period.id, group.id, { meetingHeld: true, totalAttendees: 3, memberAttendees: 3, newVisitorsCount: 0, returningVisitorsCount: 0, childrenCount: 0 });
+    const [copy] = await rt.db.select().from(schema.weeklyReports).where(eq(schema.weeklyReports.groupId, group.id));
+
+    const results = await Promise.allSettled([
+      updateReportIfCurrent(rt.db, copy!, { status: 'approved', approvedByUserId: admin.user.id, approvedAt: new Date() }, ['submitted', 'under_review']),
+      updateReportIfCurrent(rt.db, copy!, { status: 'needs_revision', revisionReason: 'ทดสอบ' }, ['submitted', 'under_review']),
+    ]);
+    const codes = results.map((r) => (r.status === 'rejected' ? (r.reason as { code?: string }).code : 'ok')).sort();
+    expect(codes).toEqual(['VERSION_CONFLICT', 'ok']);
+    const [after] = await rt.db.select().from(schema.weeklyReports).where(eq(schema.weeklyReports.id, copy!.id));
+    expect(after!.version).toBe(copy!.version + 1);
   });
 
   it('creates exactly one super_admin when two bootstrap runs race (run last: it changes seed roles)', async () => {

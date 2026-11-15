@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
@@ -8,11 +9,11 @@ import {
   reportingPeriods,
   visitorVisits,
   visitors,
+  weeklyReports,
 } from '@/server/db/schema';
 import { AppError } from '../errors';
 import { recordSecurityAudit } from '../audit/service';
 import {
-  assertCanAccessGroup,
   canAccessGroup,
   canViewUnmaskedGroupPii,
   isAdmin,
@@ -79,6 +80,25 @@ export async function listScopedMembers(
     .filter((x): x is NonNullable<typeof x> => x !== null);
 }
 
+/**
+ * Who may change data of a group: admins, the Body Leader of its Body, and stewards assigned to it.
+ * Read-only roles (pastors) are not included. They see aggregates only (DEC-06).
+ */
+function assertCanWriteGroup(
+  actor: ActorContext,
+  grp: { id: string; bodyId: string | null }
+): void {
+  if (isAdmin(actor) || isBodyLeaderForBody(actor, grp.bodyId) || actor.assignedGroupIds.has(grp.id)) {
+    return;
+  }
+  throw new AppError(403, 'SCOPE_FORBIDDEN', 'ไม่มีสิทธิ์แก้ไขข้อมูลของกลุ่มพันธกิจนี้');
+}
+
+/** Random member code. A time-based code repeated and could collide. */
+export function newMemberCode(): string {
+  return `MEM-KSN-${randomBytes(5).toString('hex').toUpperCase()}`;
+}
+
 export async function createGroupMember(
   db: FaithMapDb,
   actor: ActorContext,
@@ -107,7 +127,7 @@ export async function createGroupMember(
     throw new AppError(403, 'SCOPE_FORBIDDEN', 'ไม่มีสิทธิ์เพิ่มสมาชิกในกลุ่มพันธกิจนี้');
   }
 
-  const memberCode = `MEM-KSN-${String(Date.now()).slice(-6)}`;
+  const memberCode = newMemberCode();
   return db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
     const [created] = await tdb
@@ -168,7 +188,17 @@ export async function registerVisitor(
   if (!grp) {
     throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจบ้านที่ระบุ');
   }
-  assertCanAccessGroup(actor, grp.id, grp.bodyId);
+  assertCanWriteGroup(actor, grp);
+
+  if (input.weeklyReportId) {
+    const [linkedReport] = await db
+      .select({ groupId: weeklyReports.groupId })
+      .from(weeklyReports)
+      .where(eq(weeklyReports.id, input.weeklyReportId));
+    if (!linkedReport || linkedReport.groupId !== grp.id) {
+      throw new AppError(400, 'REPORT_GROUP_MISMATCH', 'รายงานที่ระบุไม่ใช่ของกลุ่มพันธกิจนี้');
+    }
+  }
 
   const normalizedPhone = input.phoneE164?.trim() || null;
   const normalizedLine = input.lineUserId?.trim() || null;
@@ -321,7 +351,15 @@ export async function convertVisitorToMember(
   if (!grp) {
     throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจปลายทาง');
   }
-  assertCanAccessGroup(actor, grp.id, grp.bodyId);
+  assertCanWriteGroup(actor, grp);
+  // The visitor belongs to the group where they first came. Moving them needs access there too.
+  if (visitor.firstOriginGroupId && visitor.firstOriginGroupId !== grp.id) {
+    const [origin] = await db
+      .select()
+      .from(houseMissionGroups)
+      .where(eq(houseMissionGroups.id, visitor.firstOriginGroupId));
+    if (origin) assertCanWriteGroup(actor, origin);
+  }
 
   return db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
@@ -402,7 +440,7 @@ export async function updateFollowUpItem(
   if (!grp) {
     throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจ');
   }
-  assertCanAccessGroup(actor, grp.id, grp.bodyId);
+  assertCanWriteGroup(actor, grp);
 
   const [updated] = await db
     .update(followUpItems)

@@ -329,13 +329,18 @@ describe('FaithMap Core Business Workflows & Security Rules (CD-01..CD-10, DEC-0
       expect(snapAfterTransfer!.bodyId).toBe(SEED_IDS.bodies.north);
 
       // DEC-01: Brief generation creates immutable brief and repeats idempotently
+      // The brief is made at the scheduled time (Sunday 20:30 ICT). A brief before that time is refused,
+      // so this test runs its clock one minute after the schedule.
+      const afterSchedule = new Date(openPeriod!.briefScheduledAt.getTime() + 60_000);
       const brief1 = await generateMeetingBriefForPeriod(runtime.db, openPeriod!.id, {
         actorUserId: admin.user.id,
         isCronJob: false,
+        now: afterSchedule,
       });
       const brief2 = await generateMeetingBriefForPeriod(runtime.db, openPeriod!.id, {
         actorUserId: admin.user.id,
         isCronJob: true,
+        now: afterSchedule,
       });
       expect(brief2.id).toBe(brief1.id);
       expect(brief1.isImmutable).toBe(true);

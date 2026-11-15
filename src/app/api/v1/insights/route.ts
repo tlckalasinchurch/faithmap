@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
-import { isAdmin, isBodyLeaderForBody } from '@/server/modules/authz/policy';
 import {
+  canTriggerBrief,
   exportScopedCsvData,
   generateMeetingBriefForPeriod,
 } from '@/server/modules/insights/service';
@@ -62,10 +62,7 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
     if (data.action === 'generate_brief') {
-      const canTrigger =
-        isAdmin(actor) ||
-        actor.user.systemRole === 'mission_leader' ||
-        Array.from(actor.bodyLeaderBodyIds).some((b) => isBodyLeaderForBody(actor, b));
+      const canTrigger = canTriggerBrief(actor);
       if (!canTrigger) {
         throw new AppError(403, 'FORBIDDEN', 'ไม่มีสิทธิ์สร้างสรุปประชุมผู้บริหาร');
       }

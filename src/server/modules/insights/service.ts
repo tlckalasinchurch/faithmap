@@ -10,11 +10,12 @@ import {
   visitors,
   weeklyReports,
 } from '@/server/db/schema';
-import { AppError } from '../errors';
+import { AppError, isUniqueViolation } from '../errors';
 import { recordSecurityAudit } from '../audit/service';
 import {
   canAccessGroup,
   canViewUnmaskedGroupPii,
+  isAdmin,
   isBodyLeaderForBody,
   isGlobalMetricsReader,
   maskDisplayPiiName,
@@ -156,10 +157,15 @@ export async function getDashboardOverview(
   };
 }
 
+/** Only admins may create the brief by hand. Other leaders can read it. */
+export function canTriggerBrief(actor: ActorContext): boolean {
+  return isAdmin(actor);
+}
+
 export async function generateMeetingBriefForPeriod(
   db: FaithMapDb,
   periodId: string,
-  options: { actorUserId?: string | null; isCronJob: boolean }
+  options: { actorUserId?: string | null; isCronJob: boolean; now?: Date }
 ) {
   const [existing] = await db
     .select()
@@ -174,6 +180,17 @@ export async function generateMeetingBriefForPeriod(
     .from(reportingPeriods)
     .where(eq(reportingPeriods.id, periodId));
   if (!period) throw new AppError(404, 'PERIOD_NOT_FOUND', 'ไม่พบรอบรายงาน');
+
+  // DEC-01: the brief is made at the scheduled time (Sunday 20:30 ICT). It is immutable,
+  // so an early brief would replace the official one with an incomplete one.
+  const asOf = options.now ?? new Date();
+  if (asOf.getTime() < period.briefScheduledAt.getTime()) {
+    throw new AppError(
+      409,
+      'BRIEF_TOO_EARLY',
+      'ยังไม่ถึงเวลาสร้างสรุปประชุม (วันอาทิตย์ 20:30 น.) ระบบจะสร้างให้อัตโนมัติเมื่อถึงเวลา'
+    );
+  }
 
   const allBodies = await db.select().from(bodies);
   const bodyMap = new Map(allBodies.map((b) => [b.id, b]));
@@ -285,7 +302,8 @@ export async function generateMeetingBriefForPeriod(
     ],
   };
 
-  return db.transaction(async (tx) => {
+  try {
+    return await db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
     const [brief] = await tdb
       .insert(meetingBriefs)
@@ -306,7 +324,15 @@ export async function generateMeetingBriefForPeriod(
 
     void bodyMap;
     return brief!;
-  });
+    });
+  } catch (err) {
+    // Two requests at once: the second one gets the brief that the first one made.
+    if (isUniqueViolation(err)) {
+      const [raced] = await db.select().from(meetingBriefs).where(eq(meetingBriefs.periodId, periodId));
+      if (raced) return raced;
+    }
+    throw err;
+  }
 }
 
 export async function listMeetingBriefs(db: FaithMapDb, actor: ActorContext) {
@@ -327,9 +353,16 @@ export async function listMeetingBriefs(db: FaithMapDb, actor: ActorContext) {
   }));
 }
 
-function csvEscape(val: unknown): string {
-  const s = val === null || val === undefined ? '' : String(val);
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+/**
+ * Escapes one CSV cell. A cell that a spreadsheet could read as a formula gets a leading apostrophe,
+ * so names typed by users cannot run as formulas (OWASP CSV injection).
+ * A phone number or a plain number that starts with + or - stays as it is.
+ */
+export function csvEscape(val: unknown): string {
+  let s = val === null || val === undefined ? '' : String(val);
+  const startsLikeFormula = /^[=@\t\r]/.test(s) || (/^[+-]/.test(s) && !/^[+-]\d[\d\s().-]*$/.test(s));
+  if (startsLikeFormula) s = `'${s}`;
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return `"${s.replaceAll('"', '""')}"`;
   }
   return s;

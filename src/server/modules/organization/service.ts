@@ -4,6 +4,7 @@ import {
   assignments,
   authSessions,
   bodies,
+  cares,
   externalIdentities,
   groupBodyTransfers,
   houseMissionGroups,
@@ -12,7 +13,7 @@ import {
   weeklyReports,
   reportingPeriods,
 } from '@/server/db/schema';
-import { AppError } from '../errors';
+import { AppError, isUniqueViolation } from '../errors';
 import { recordSecurityAudit } from '../audit/service';
 import {
   isAdmin,
@@ -236,12 +237,18 @@ export async function createGroup(
   }
 ) {
   assertCanManageBodyScope(actor, input.bodyId ?? null);
+  if (input.bodyId) {
+    const [bodyRow] = await db.select({ id: bodies.id }).from(bodies).where(eq(bodies.id, input.bodyId));
+    if (!bodyRow) throw new AppError(404, 'BODY_NOT_FOUND', 'ไม่พบบอดี้ที่ระบุ');
+  }
 
   const hasCoords =
     typeof input.latitude === 'number' && typeof input.longitude === 'number';
   const bodyId = input.bodyId ?? null;
 
-  const [created] = await db
+  let created: typeof houseMissionGroups.$inferSelect | undefined;
+  try {
+    [created] = await db
     .insert(houseMissionGroups)
     .values({
       groupCode: input.groupCode.trim().toUpperCase(),
@@ -262,6 +269,12 @@ export async function createGroup(
       notes: input.notes ?? null,
     })
     .returning();
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new AppError(409, 'GROUP_CODE_EXISTS', 'มีรหัสกลุ่มนี้อยู่ในระบบแล้ว');
+    }
+    throw err;
+  }
 
   await recordSecurityAudit(db, {
     actorUserId: actor.user.id,
@@ -303,6 +316,8 @@ export async function transferGroupToBody(
   if (group.bodyId === toBodyId) {
     throw new AppError(400, 'SAME_BODY', 'กลุ่มสังกัดบอดี้ปลายทางนี้อยู่แล้ว');
   }
+  const [toBody] = await db.select({ id: bodies.id }).from(bodies).where(eq(bodies.id, toBodyId));
+  if (!toBody) throw new AppError(404, 'BODY_NOT_FOUND', 'ไม่พบบอดี้ปลายทาง');
 
   return db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
@@ -380,8 +395,16 @@ export async function assignLeadershipRole(
     if (!grp) {
       throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจบ้านที่ระบุ');
     }
-    // DEC-09: Body Leader can manage group assignments ONLY within their own Body
+    // DEC-09: Body Leader can manage group assignments ONLY within their own Body,
+    // and only the roles it lists: group_leader, care_leader, coordinator.
     assertCanManageBodyScope(actor, grp.bodyId);
+    if (input.roleType === 'other_authorized' && !isAdmin(actor)) {
+      throw new AppError(
+        403,
+        'ADMIN_REQUIRED',
+        'เฉพาะผู้ดูแลระบบเท่านั้นที่มอบหมายบทบาท "ผู้ได้รับมอบหมายอื่น" ได้ (DEC-09)'
+      );
+    }
   }
 
   const [targetUser] = await db.select().from(users).where(eq(users.id, input.userId));
@@ -535,7 +558,7 @@ export async function revokeAssignment(
     if (!isAdmin(actor)) {
       throw new AppError(403, 'ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่ถอดถอนหัวหน้าบอดี้ได้');
     }
-  } else if (target.groupId) {
+  } else if (target.scopeType === 'group' && target.groupId) {
     const [grp] = await db
       .select()
       .from(houseMissionGroups)
@@ -544,6 +567,13 @@ export async function revokeAssignment(
       throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจ');
     }
     assertCanManageBodyScope(actor, grp.bodyId);
+  } else if (target.scopeType === 'care' && target.careId) {
+    // Care assignments (Phase 3B) are managed by the Body that owns the care. Unmapped cares: admins only.
+    const [care] = await db.select({ bodyId: cares.bodyId }).from(cares).where(eq(cares.id, target.careId));
+    assertCanManageBodyScope(actor, care?.bodyId ?? null);
+  } else if (!isAdmin(actor)) {
+    // Any other kind of assignment: deny unless admin. A missing check here would allow anyone.
+    throw new AppError(403, 'ADMIN_REQUIRED', 'ไม่มีสิทธิ์ถอดถอนการมอบหมายประเภทนี้');
   }
 
   const now = new Date();
@@ -624,6 +654,20 @@ export async function updateUserStatusByAdmin(
   }
   if (actor.user.id === targetUserId && nextStatus !== 'active') {
     throw new AppError(400, 'CANNOT_SUSPEND_SELF', 'ไม่สามารถระงับบัญชีของตนเองได้');
+  }
+
+  const [target] = await db.select({ role: users.systemRole }).from(users).where(eq(users.id, targetUserId));
+  if (!target) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'ไม่พบบัญชีผู้ใช้ที่ต้องการแก้ไข');
+  }
+  // Admin and super_admin accounts can only be changed by a super_admin.
+  // Otherwise an admin could lock out the account that approves new registrations.
+  if ((target.role === 'super_admin' || target.role === 'admin') && actor.user.systemRole !== 'super_admin') {
+    throw new AppError(
+      403,
+      'PRIVILEGED_ACCOUNT',
+      'เฉพาะผู้ดูแลระบบสูงสุดเท่านั้นที่เปลี่ยนสถานะบัญชีผู้ดูแลระบบได้'
+    );
   }
 
   const [updated] = await db

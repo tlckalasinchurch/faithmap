@@ -4,6 +4,7 @@ import {
   assignments,
   attendanceRecords,
   bodies,
+  groupMemberships,
   houseMissionGroups,
   periodGroupSnapshots,
   reportAuditEvents,
@@ -11,7 +12,7 @@ import {
   users,
   weeklyReports,
 } from '@/server/db/schema';
-import { AppError } from '../errors';
+import { AppError, isUniqueViolation } from '../errors';
 import { recordReportAudit, recordSecurityAudit } from '../audit/service';
 import {
   assertCanAccessGroup,
@@ -23,7 +24,7 @@ import {
 } from '../authz/policy';
 import { dispatchNotification } from '../notifications/service';
 import { isUsableAccount, type ActorContext } from '../identity/service';
-import { getMondaySundayPeriodBounds, isPastDeadline } from '../time/bangkok';
+import { getBangkokParts, getMondaySundayPeriodBounds, isPastDeadline } from '../time/bangkok';
 
 export interface BodyApprovalReadiness {
   ready: boolean;
@@ -380,6 +381,88 @@ export interface ReportPayloadInput {
   expectedVersion?: number;
 }
 
+/**
+ * Saves a change to a report only if nobody changed it since it was read (same version, allowed status).
+ * Without this, two people deciding at the same time could overwrite each other.
+ */
+export async function updateReportIfCurrent(
+  db: FaithMapDb,
+  report: typeof weeklyReports.$inferSelect,
+  set: Partial<typeof weeklyReports.$inferInsert>,
+  allowedStatuses?: string[]
+): Promise<typeof weeklyReports.$inferSelect> {
+  const conditions = [eq(weeklyReports.id, report.id), eq(weeklyReports.version, report.version)];
+  if (allowedStatuses) conditions.push(inArray(weeklyReports.status, allowedStatuses));
+  const [row] = await db
+    .update(weeklyReports)
+    .set({ ...set, version: report.version + 1, updatedAt: new Date() })
+    .where(and(...conditions))
+    .returning();
+  if (!row) {
+    throw new AppError(
+      409,
+      'VERSION_CONFLICT',
+      'รายงานถูกเปลี่ยนโดยคำขออื่นแล้ว กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่'
+    );
+  }
+  return row;
+}
+
+async function insertReportOnce(
+  db: FaithMapDb,
+  values: typeof weeklyReports.$inferInsert
+): Promise<typeof weeklyReports.$inferSelect> {
+  try {
+    const [row] = await db.insert(weeklyReports).values(values).returning();
+    return row!;
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new AppError(409, 'VERSION_CONFLICT', 'มีการสร้างรายงานของกลุ่มนี้ในรอบนี้พร้อมกัน กรุณาโหลดข้อมูลล่าสุด');
+    }
+    throw err;
+  }
+}
+
+/** A period takes reports from its first day (Bangkok date) until it is closed. Late reports stay allowed. */
+function assertPeriodAcceptsReports(
+  period: { startDate: string; status: string },
+  now: Date
+): void {
+  if (period.status === 'closed' || getBangkokParts(now).isoDate < period.startDate) {
+    throw new AppError(
+      409,
+      'PERIOD_NOT_ACCEPTING',
+      'รอบรายงานนี้ยังไม่เปิดหรือปิดรับรายงานแล้ว'
+    );
+  }
+}
+
+/** Attendance can only name members who belong to the group, once each. */
+async function assertAttendanceBelongsToGroup(
+  db: FaithMapDb,
+  groupId: string,
+  attendance: ReportPayloadInput['attendance']
+): Promise<void> {
+  if (!attendance || attendance.length === 0) return;
+  const ids = attendance.map((a) => a.memberId);
+  if (new Set(ids).size !== ids.length) {
+    throw new AppError(400, 'ATTENDANCE_DUPLICATE_MEMBER', 'มีสมาชิกซ้ำในรายชื่อผู้เข้าร่วม');
+  }
+  const rows = await db
+    .select({ memberId: groupMemberships.memberId })
+    .from(groupMemberships)
+    .where(
+      and(
+        eq(groupMemberships.groupId, groupId),
+        eq(groupMemberships.isActive, true),
+        inArray(groupMemberships.memberId, ids)
+      )
+    );
+  if (rows.length !== ids.length) {
+    throw new AppError(400, 'MEMBER_NOT_IN_GROUP', 'รายชื่อผู้เข้าร่วมมีสมาชิกที่ไม่ได้อยู่ในกลุ่มนี้');
+  }
+}
+
 function normalizeCounts(input: ReportPayloadInput) {
   if (!input.meetingHeld) {
     return {
@@ -406,7 +489,8 @@ export async function saveDraftReport(
   actor: ActorContext,
   periodId: string,
   groupId: string,
-  input: ReportPayloadInput
+  input: ReportPayloadInput,
+  now: Date = new Date()
 ) {
   if (!isGroupLeaderForGroup(actor, groupId)) {
     throw new AppError(
@@ -415,6 +499,11 @@ export async function saveDraftReport(
       'เฉพาะหัวหน้ากลุ่มพันธกิจที่ได้รับมอบหมายเท่านั้นที่บันทึกฉบับร่างได้'
     );
   }
+
+  const [draftPeriod] = await db.select().from(reportingPeriods).where(eq(reportingPeriods.id, periodId));
+  if (!draftPeriod) throw new AppError(404, 'PERIOD_NOT_FOUND', 'ไม่พบรอบรายงานที่ระบุ');
+  assertPeriodAcceptsReports(draftPeriod, now);
+  await assertAttendanceBelongsToGroup(db, groupId, input.attendance);
 
   const [grp] = await db
     .select()
@@ -451,7 +540,6 @@ export async function saveDraftReport(
   }
 
   const counts = normalizeCounts(input);
-  const now = new Date();
   const supCheck = await evaluateRequiresSupervisorReview(db, groupId);
 
   return db.transaction(async (tx) => {
@@ -469,9 +557,7 @@ export async function saveDraftReport(
           )
         );
 
-      const [inserted] = await tdb
-        .insert(weeklyReports)
-        .values({
+      saved = await insertReportOnce(tdb, {
           periodId,
           snapshotId: snapshot?.id ?? null,
           groupId,
@@ -487,13 +573,9 @@ export async function saveDraftReport(
           requiresSupervisorReview: supCheck.required,
           submittedByUserId: actor.user.id,
           version: 1,
-        })
-        .returning();
-      saved = inserted!;
+        });
     } else {
-      const [updated] = await tdb
-        .update(weeklyReports)
-        .set({
+      const updated = await updateReportIfCurrent(tdb, existing, {
           meetingHeld: input.meetingHeld,
           notHeldReason: input.meetingHeld ? null : input.notHeldReason?.trim() || null,
           meetingDate: input.meetingDate || null,
@@ -502,11 +584,7 @@ export async function saveDraftReport(
           prayerRequests: input.prayerRequests ?? null,
           careNeedsNotes: input.careNeedsNotes ?? null,
           requiresSupervisorReview: supCheck.required,
-          version: existing.version + 1,
-          updatedAt: now,
-        })
-        .where(eq(weeklyReports.id, existing.id))
-        .returning();
+        }, ['draft', 'needs_revision']);
       saved = updated!;
     }
 
@@ -556,6 +634,8 @@ export async function submitReport(
     .from(reportingPeriods)
     .where(eq(reportingPeriods.id, periodId));
   if (!period) throw new AppError(404, 'PERIOD_NOT_FOUND', 'ไม่พบรอบรายงานที่ระบุ');
+  assertPeriodAcceptsReports(period, now);
+  await assertAttendanceBelongsToGroup(db, groupId, input.attendance);
 
   const [grp] = await db
     .select()
@@ -605,9 +685,7 @@ export async function submitReport(
             eq(periodGroupSnapshots.groupId, groupId)
           )
         );
-      const [inserted] = await tdb
-        .insert(weeklyReports)
-        .values({
+      saved = await insertReportOnce(tdb, {
           periodId,
           snapshotId: snapshot?.id ?? null,
           groupId,
@@ -628,13 +706,9 @@ export async function submitReport(
           submittedByUserId: actor.user.id,
           submittedAt: now,
           version: 1,
-        })
-        .returning();
-      saved = inserted!;
+        });
     } else {
-      const [updated] = await tdb
-        .update(weeklyReports)
-        .set({
+      const updated = await updateReportIfCurrent(tdb, existing, {
           status: 'submitted',
           meetingHeld: input.meetingHeld,
           notHeldReason: input.meetingHeld ? null : input.notHeldReason!.trim(),
@@ -655,11 +729,7 @@ export async function submitReport(
           supervisorNotes: null,
           approvedByUserId: null,
           approvedAt: null,
-          version: existing.version + 1,
-          updatedAt: now,
-        })
-        .where(eq(weeklyReports.id, existing.id))
-        .returning();
+        }, ['draft', 'needs_revision']);
       saved = updated!;
     }
 
@@ -792,18 +862,12 @@ export async function reviewReportBySupervisor(
     if (!reason) {
       throw new AppError(400, 'REVISION_REASON_REQUIRED', 'กรุณาระบุเหตุผลในการส่งกลับขอแก้ไข');
     }
-    const [updated] = await db
-      .update(weeklyReports)
-      .set({
+    const updated = await updateReportIfCurrent(db, report, {
         status: 'needs_revision',
         revisionRequestedByUserId: actor.user.id,
         revisionRequestedAt: now,
         revisionReason: reason,
-        version: report.version + 1,
-        updatedAt: now,
-      })
-      .where(eq(weeklyReports.id, report.id))
-      .returning();
+      }, ['submitted', 'under_review']);
 
     await recordReportAudit(db, {
       weeklyReportId: report.id,
@@ -832,18 +896,12 @@ export async function reviewReportBySupervisor(
     return updated!;
   }
 
-  const [updated] = await db
-    .update(weeklyReports)
-    .set({
+  const updated = await updateReportIfCurrent(db, report, {
       status: 'under_review',
       supervisorReviewedByUserId: actor.user.id,
       supervisorReviewedAt: now,
       supervisorNotes: notesOrReason?.trim() || 'ตรวจทานเรียบร้อย',
-      version: report.version + 1,
-      updatedAt: now,
-    })
-    .where(eq(weeklyReports.id, report.id))
-    .returning();
+    }, ['submitted', 'under_review']);
 
   await recordReportAudit(db, {
     weeklyReportId: report.id,
@@ -930,18 +988,12 @@ export async function approveReportByBodyLeader(
     if (!reason) {
       throw new AppError(400, 'REVISION_REASON_REQUIRED', 'กรุณาระบุเหตุผลในการส่งกลับขอแก้ไข');
     }
-    const [updated] = await db
-      .update(weeklyReports)
-      .set({
+    const updated = await updateReportIfCurrent(db, report, {
         status: 'needs_revision',
         revisionRequestedByUserId: actor.user.id,
         revisionRequestedAt: now,
         revisionReason: reason,
-        version: report.version + 1,
-        updatedAt: now,
-      })
-      .where(eq(weeklyReports.id, report.id))
-      .returning();
+      }, ['submitted', 'under_review']);
 
     await recordReportAudit(db, {
       weeklyReportId: report.id,
@@ -979,17 +1031,11 @@ export async function approveReportByBodyLeader(
     );
   }
 
-  const [updated] = await db
-    .update(weeklyReports)
-    .set({
+  const updated = await updateReportIfCurrent(db, report, {
       status: 'approved',
       approvedByUserId: actor.user.id,
       approvedAt: now,
-      version: report.version + 1,
-      updatedAt: now,
-    })
-    .where(eq(weeklyReports.id, report.id))
-    .returning();
+    }, ['submitted', 'under_review']);
 
   await recordReportAudit(db, {
     weeklyReportId: report.id,
@@ -1045,17 +1091,11 @@ export async function unblockReportByAdmin(
   }
 
   const now = new Date();
-  const [updated] = await db
-    .update(weeklyReports)
-    .set({
+  const updated = await updateReportIfCurrent(db, report, {
       isBlocked: false,
       blockedReason: null,
       blockedAt: null,
-      version: report.version + 1,
-      updatedAt: now,
-    })
-    .where(eq(weeklyReports.id, report.id))
-    .returning();
+    });
 
   await recordReportAudit(db, {
     weeklyReportId: report.id,

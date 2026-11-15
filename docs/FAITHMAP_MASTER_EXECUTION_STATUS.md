@@ -1,6 +1,6 @@
 # FaithMap — Master Execution Status
 
-**Updated:** 2026-11-15 · **Branch:** `claude/vigilant-noether-4fn1g1` · **`main` is unchanged (`e38a24e`).**
+**Updated:** 2026-11-15 (round 3: authorization review) · **Branch:** `claude/vigilant-noether-4fn1g1` · **`main` is unchanged (`e38a24e`).**
 **Budget:** 0 THB/month. No paid service was used, created or enabled.
 **Push / merge / deploy:** the feature branch was pushed after the tests above passed (round-2 Git rules). `main` was not touched. No pull request was opened. Nothing was deployed.
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | 0 Infrastructure readiness | **NEEDS OWNER APPROVAL** | B-1 (Vercel Hobby reply) and B-2 (scheduler) are open. No Vercel project, Neon project or LINE channel exists. |
 | 1 Phase 3B verification | **NEEDS OWNER APPROVAL** | Review of all Phase 3B services is done. 8 defects fixed. 3 policy decisions are open (see Gate 1). |
-| 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. A full review of the other API routes is not done. |
+| 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. The older routes are now reviewed and 10 defects are fixed. PII-in-logs and input-validation review remain. |
 | 3 LINE identity and authentication | **BLOCKED** | Server side is built and checked against official docs. Real LINE cannot be tested without a channel. |
 | 4 LINE MINI App | **IN PROGRESS** | Core screens are built and browser-tested with the mock. The weekly report form is not built. |
 | 5 LINE OA messaging | NOT STARTED | |
@@ -35,8 +35,8 @@ No gate is PASSED. Gate 0 has critical blockers.
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
-| `npx vitest run` | **18 files passed, 1 skipped; 103 tests passed, 13 skipped** (skipped = the real-PostgreSQL file, which needs a database URL) |
-| `FAITHMAP_TEST_DATABASE_URL=postgres://…@127.0.0.1:5432/faithmap_test_a npx vitest run tests/real-postgres.test.ts` | **1 file passed; 13 tests passed** on local PostgreSQL 16.15 |
+| `npx vitest run` | **19 files passed, 1 skipped; 117 tests passed, 14 skipped** (skipped = the real-PostgreSQL file, which needs a database URL) |
+| `FAITHMAP_TEST_DATABASE_URL=postgres://…@127.0.0.1:5432/faithmap_test_a npx vitest run tests/real-postgres.test.ts` | **1 file passed; 14 tests passed** on local PostgreSQL 16.15 |
 | `npx next build` | exit 0. Routes include `/mini`, `/api/v1/line`, `/api/v1/passkeys`, `/api/v1/growth` |
 | `npx next build` with `NEXT_PUBLIC_FAITHMAP_MOCK_LIFF=true` | exit 0. `grep` finds no mock token or mock label in `.next` (mock is not shipped) |
 | `npm ci --dry-run` | succeeds (lock file repaired) |
@@ -109,16 +109,56 @@ Performance of staging (one insert per row, so slow on a remote database for tho
 
 Also: backup and restore procedure verified on **local** PostgreSQL (see test table). **Not verified on Neon.**
 
+
+### Authorization review of the older routes (round 3)
+
+**Scope:** `reporting`, `pastoral-care`, `organization`, `insights`, `notifications` and `audit` services (all 38 exported functions mapped to their guards), and the `reports`, `pastoral`, `organization`, `insights` and `workspace` routes. I read the state machine, role assignment, status change, export and visitor code in full.
+
+**Confirmed correct (evidence in code and existing tests):**
+- `CD-08`: exactly one code path sets a report to `approved` (Body Leader approval). The cutoff job only changes the period status and sends reminders.
+- `DEC-05`: self-approval and self-review are refused. `DEC-04`: the supervisor step comes before approval. `CD-07`: blocked reports cannot be approved.
+- Notifications are owner-scoped. Idempotency keys include the user, so no cross-user replay. Security audit logs are admin-only at the route.
+- Draft reports are hidden from other viewers. Visitor phone numbers exist only with consent (database check).
+
+**Defects fixed** (each has a test in `tests/gate2-legacy-routes-authz.test.ts`; the first run failed to load until the code existed):
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| A-1 | **Critical** | `revokeAssignment` had no check for **care-scope** assignments (Phase 3B). Any signed-in user who knew an assignment ID could end a care steward. | Care assignments need authority over the care's Body. Unknown scopes are admin-only. |
+| A-2 | **Critical** | An `admin` could suspend a `super_admin` or another admin and lock out the account that approves registrations. | Only a `super_admin` can change admin or super_admin status. |
+| A-3 | **High** | Any Body Leader, pastor or admin could create the immutable meeting brief at any time. An early brief replaces the official Sunday 20:30 brief with an incomplete one (`DEC-01`). The cron path with an explicit period had no time check either. | Time guard inside the generator for every caller. Manual trigger is admin-only. A race returns the first brief. |
+| A-4 | **High** | Report attendance accepted any member ID, including members of other groups, and duplicates. | Members must be active in the group, once each. |
+| A-5 | **High** | Reports could be saved or submitted for a future or closed period. | Refused with 409. Late reports in an open period stay allowed. |
+| A-6 | **High** | Report updates had no version or status condition. Two decisions at once (or a draft save during a submit) could overwrite each other. | One guarded update. Real PostgreSQL race test: exactly one winner. First-insert race returns 409. |
+| A-7 | **High** | `review` and `approve` could be sent without `expectedVersion`, so a reviewer could approve content they had not seen. | Required in the API. The web UI already sends it. |
+| A-8 | **High** | Pastors (read-only role) could register visitors and change follow-ups. A visit could be attached to another group's report. A visitor could be moved into any group the user could access, without access to the origin group. | Steward-only writes (admin, Body Leader, assigned steward). Report must belong to the group. Origin group access required. |
+| A-9 | **High** | CSV export did not neutralize formulas. A visitor named `=HYPERLINK(…)` would run in Excel. | Leading apostrophe for formula-like cells. Phone numbers and plain numbers are kept. |
+| A-10 | Medium | Body Leaders could grant `other_authorized`, which `DEC-09` does not list. It gives group-member data access. | Admin-only. The three listed roles stay allowed. |
+| A-11 | Low | Member code was the last 6 digits of the clock and could collide. Missing body or duplicate group code gave raw database errors. | Random 40-bit codes. Clear 404 and 409 errors. |
+
+An existing test (`workflow-and-constraints`) created the brief in mid-week. That is the A-3 behavior. I moved its clock to after the scheduled time. Its purpose (immutability and idempotency) is unchanged. Nothing else in that test changed.
+
+**Open owner decisions from this review (not changed):**
+
+1. **Brief visibility.** Body Leaders can read the brief of all Bodies. It contains other Bodies' group names, follow-up titles and prayer themes. Should Body Leaders see only their own Body?
+2. **Reports after the brief.** The plan says late reports after the brief are allowed and the brief stays unchanged. The live data then differs from the brief. Keep this, or close the period at a set time?
+3. **Member consent.** `createGroupMember` records "consented" for every new member, with a consent time, without asking. Phone and email are stored. Should consent be captured on purpose?
+4. **Care-level leaders.** A Care Leader assigned at care level (Phase 3B) does not get review rights over the care's groups. Only group-level assignments do. This is safe, but it may not be what you expect.
+5. **LINE inside the database transaction.** Report submit sends LINE messages while its transaction is open. A slow LINE call holds the transaction. A rollback after a send would leave a message about a report that does not exist. Needs a send-after-commit queue (Gate 5).
+6. **Admins managing admins.** I made admin accounts changeable only by a super_admin (A-2). Confirm this is the rule you want.
+
+**Not reviewed:** `listBodiesWithLeaders`, `listGroupsWithContext`, `getDashboardOverview` and the draft-masking functions were read through their guards but not traced line by line. Input length limits on the `organization` and `pastoral` routes.
+
 ### Remaining vulnerabilities and gaps
 
 | ID | Risk | Item |
 |---|---|---|
-| G2-1 | **High** | Authorization of the older Phase 1–3 routes (`reports`, `pastoral`, `organization`, `insights`, `workspace`) is not reviewed. |
+| G2-1 | ~~High~~ **Reviewed in round 3** | See "Authorization review of the older routes" below. 10 defects fixed. 6 owner decisions open. |
 | G2-2 | Medium | Rate limit uses `x-forwarded-for`. Safe on Vercel. Not safe behind an unknown proxy. Only password login and challenge creation are limited. |
 | G2-3 | Medium | A locked username blocks the real user for 15 minutes (accepted trade-off; your call). |
 | G2-4 | Medium | `auth_challenges` rows are never cleaned up. `used_id_tokens` is cleaned when a new token is saved. Add a scheduled cleanup (Gate 6). |
 | G2-5 | Medium | No session revocation on password change (no password-change feature exists yet). |
-| G2-6 | Medium | Logs and error text were not scanned for PII. |
+| G2-6 | Medium | Logs and error text were not scanned for PII. Also not done: a review of input limits on `organization` and `pastoral` routes. |
 | G2-7 | Medium | `ensureSeeded` and demo accounts still exist for local use. The default password `FaithMap2026!` is public in the source. They never run in production. |
 | G2-8 | Low | Older inline-DDL databases (local `.data`) cannot be upgraded. Delete `.data` and start again. No other database exists. |
 
@@ -216,7 +256,7 @@ See `FAITHMAP_ACCOUNT_ACCESS_CHECKLIST.md`. New items from this round:
 
 ## Next executable tasks (no owner input needed)
 
-1. Review the older routes' authorization (G2-1).
-2. Run all test files on real PostgreSQL.
+1. Run all test files on real PostgreSQL.
+2. Add input limits to the `organization` and `pastoral` routes and scan logs for PII (G2-6).
 3. Build the MINI App weekly report form.
 4. Add challenge cleanup and a CI workflow file (manual migration job, no secrets in the repository).
