@@ -122,6 +122,11 @@ function extractMemberExtras(rawCells: Record<string, unknown> | undefined) {
   };
 }
 
+/**
+ * Growth fields come only from explicit field names or named headers.
+ * Column letters (Y to AD) are NOT used: the mapping is not verified against the source workbook
+ * (owner decision 2). The raw cells stay in provenance, so nothing is lost and nothing is invented.
+ */
 function extractGrowthFields(rawCells: Record<string, unknown> | undefined) {
   const meta =
     rawCells && typeof rawCells.__growthFields === 'object' && rawCells.__growthFields !== null
@@ -136,22 +141,22 @@ function extractGrowthFields(rawCells: Record<string, unknown> | undefined) {
   return {
     conversionDateRaw:
       pickMeta('salvationDateRaw') ??
-      pickRawCell(rawCells, ['วันรับเชื่อ', 'salvation_date', 'conversionDateRaw', 'Y']),
+      pickRawCell(rawCells, ['วันรับเชื่อ', 'salvation_date', 'conversionDateRaw']),
     responseAttitudeRaw:
       pickMeta('responseAttitudeRaw') ??
-      pickRawCell(rawCells, ['ท่าทีการตอบสนอง', 'response', 'responseAttitudeRaw', 'Z']),
+      pickRawCell(rawCells, ['ท่าทีการตอบสนอง', 'response', 'responseAttitudeRaw']),
     groupAttendanceLevelRaw:
       pickMeta('groupAttendanceLevelRaw') ??
-      pickRawCell(rawCells, ['การเข้าร่วมกลุ่ม', 'group_attendance', 'groupAttendanceLevelRaw', 'AA']),
+      pickRawCell(rawCells, ['การเข้าร่วมกลุ่ม', 'group_attendance', 'groupAttendanceLevelRaw']),
     discipleshipGoalRaw:
       pickMeta('discipleshipGoalRaw') ??
-      pickRawCell(rawCells, ['เป้าหมายในการสร้าง', 'growth_goal', 'discipleshipGoalRaw', 'AB']),
+      pickRawCell(rawCells, ['เป้าหมายในการสร้าง', 'growth_goal', 'discipleshipGoalRaw']),
     targetTimeframeRaw:
       pickMeta('targetTimeframeRaw') ??
-      pickRawCell(rawCells, ['กำหนดเวลาภายใน', 'deadline', 'targetTimeframeRaw', 'AC']),
+      pickRawCell(rawCells, ['กำหนดเวลาภายใน', 'deadline', 'targetTimeframeRaw']),
     disciplerNameRaw:
       pickMeta('disciplerNameRaw') ??
-      pickRawCell(rawCells, ['ผู้รับผิดชอบสร้าง', 'growth_responsible_person', 'disciplerNameRaw', 'AD']),
+      pickRawCell(rawCells, ['ผู้รับผิดชอบสร้าง', 'growth_responsible_person', 'disciplerNameRaw']),
   };
 }
 

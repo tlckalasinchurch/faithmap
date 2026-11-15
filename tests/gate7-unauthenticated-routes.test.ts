@@ -41,9 +41,11 @@ afterAll(() => {
 });
 
 function request(method: string, name: string, headers: Record<string, string> = {}) {
-  const init: RequestInit = { method, headers: { 'content-type': 'application/json', ...headers } };
-  if (method !== 'GET') init.body = JSON.stringify({ action: 'anything' });
-  return new NextRequest(`http://localhost:3000/api/v1/${name}`, init);
+  return new NextRequest(`http://localhost:3000/api/v1/${name}`, {
+    method,
+    headers: { 'content-type': 'application/json', ...headers },
+    ...(method !== 'GET' ? { body: JSON.stringify({ action: 'anything' }) } : {}),
+  });
 }
 
 describe('Every protected route refuses a request without a session', () => {

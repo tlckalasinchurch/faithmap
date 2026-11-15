@@ -244,3 +244,24 @@ describe('Rollback protects reviewed growth records', () => {
     });
   });
 });
+
+describe('Growth columns Y-AD stay unmapped until the workbook is inspected (owner decision 2)', () => {
+  it('invents no growth data from column letters, and keeps the raw cells', async () => {
+    await withDb(async (rt) => {
+      const admin = await actorFor(rt, SEED_IDS.users.admin);
+      const staged = await stageImportBatch(rt.db, admin, {
+        sourceArchiveName: 'LET1.xlsx',
+        groups: [{ groupRef: 'G-LET1', groupNameFromSheet: 'กลุ่ม LET1', careCode: 'C-LET1', sourceFile: 'LET1.xlsx', sourceSheet: 'S' }],
+        members: [{
+          memberRowRef: 'M-LET1-1', groupRef: 'G-LET1', sourceFile: 'LET1.xlsx', sourceSheet: 'S', sourceRow: 5,
+          fullNameRaw: 'สมศักดิ์ ตัวอักษร', nicknameRaw: 'ศักดิ์',
+          rawCells: { Y: 'ค่าในคอลัมน์ Y', Z: 'ค่าในคอลัมน์ Z', AA: 'AA', AB: 'AB', AC: 'AC', AD: 'AD' },
+        }],
+      });
+      await promoteStagingBatch(rt.db, admin, staged.batch.id);
+      expect(await rt.db.select().from(schema.memberGrowthRecords).where(eq(schema.memberGrowthRecords.sourceBatchId, staged.batch.id))).toHaveLength(0);
+      const [row] = await rt.db.select().from(schema.stagingMemberRows).where(eq(schema.stagingMemberRows.batchId, staged.batch.id));
+      expect(row!.rawCellsJson).toMatchObject({ Y: 'ค่าในคอลัมน์ Y', AD: 'AD' });
+    });
+  });
+});
