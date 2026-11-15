@@ -1,3 +1,4 @@
+import { describeErrorForLog } from '../modules/errors';
 import { getDbRuntime } from './client';
 import { prepareSchema } from './migrate';
 import { ensureSeeded, isExplicitSeedAllowed } from './seed';
@@ -21,6 +22,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Seed failed:', err);
+  console.error('Seed failed:', JSON.stringify(describeErrorForLog(err)));
   process.exit(1);
 });

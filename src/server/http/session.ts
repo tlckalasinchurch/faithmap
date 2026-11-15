@@ -3,7 +3,7 @@ import { getReadyDb } from '@/server/db/bootstrap';
 import type { FaithMapDb } from '@/server/db/client';
 import { authenticateSessionToken, type ActorContext } from '@/server/modules/identity/service';
 import { hashSessionToken } from '@/server/modules/identity/crypto';
-import { AppError, toErrorResponseBody } from '@/server/modules/errors';
+import { AppError, describeErrorForLog, toErrorResponseBody } from '@/server/modules/errors';
 
 export const PROD_SESSION_COOKIE = '__Host-faithmap_session';
 export const DEV_SESSION_COOKIE = 'faithmap_session';
@@ -148,5 +148,6 @@ export function getRequestMeta(req: NextRequest) {
 
 export function handleRouteError(err: unknown): NextResponse {
   const { status, body } = toErrorResponseBody(err);
+  if (status >= 500) console.error('[faithmap] internal error', describeErrorForLog(err));
   return NextResponse.json(body, { status });
 }

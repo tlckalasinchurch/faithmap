@@ -58,3 +58,12 @@ export function hashSessionToken(rawToken: string): string {
 export function hashRequestPayload(payload: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
 }
+
+/**
+ * Audit and rate-limit key for a typed username. People sometimes type a password into the username
+ * field, and audit rows are permanent. The key is a peppered HMAC, so the log holds no readable text
+ * and a typed password cannot be guessed back from it without the server secret.
+ */
+export function loginTargetKey(normalizedUsername: string): string {
+  return `login:${crypto.createHmac('sha256', getPepper()).update(`login-target\0${normalizedUsername}`).digest('hex').slice(0, 32)}`;
+}

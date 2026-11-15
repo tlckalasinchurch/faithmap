@@ -1,3 +1,4 @@
+import { describeErrorForLog, isAppError } from '../modules/errors';
 import { getDbRuntime } from './client';
 import { prepareSchema } from './migrate';
 import { createFirstSuperAdmin } from '../modules/identity/bootstrap';
@@ -20,6 +21,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : 'Bootstrap failed');
+  console.error(isAppError(err) ? err.message : `Bootstrap failed: ${JSON.stringify(describeErrorForLog(err))}`);
   process.exit(1);
 });

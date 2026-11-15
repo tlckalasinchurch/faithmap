@@ -17,6 +17,7 @@ import {
   generateOpaqueToken,
   hashPassword,
   hashSessionToken,
+  loginTargetKey,
   verifyPasswordUniform,
 } from './crypto';
 
@@ -308,7 +309,7 @@ export async function loginWithPassword(
       actorUserId: userRow?.id ?? null,
       action: 'auth_login_password_failed',
       targetType: 'user',
-      targetId: normalizedUsername,
+      targetId: loginTargetKey(normalizedUsername),
       ipAddress: meta?.ipAddress ?? null,
       outcome: 'denied',
       reason: 'Invalid username or password',
@@ -352,7 +353,7 @@ async function assertPasswordLoginAllowed(
     .where(
       and(
         eq(securityAuditLogs.action, 'auth_login_password_failed'),
-        eq(securityAuditLogs.targetId, normalizedUsername),
+        eq(securityAuditLogs.targetId, loginTargetKey(normalizedUsername)),
         gt(securityAuditLogs.createdAt, since)
       )
     );

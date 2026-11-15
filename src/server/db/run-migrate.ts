@@ -1,3 +1,4 @@
+import { describeErrorForLog, isAppError } from '../modules/errors';
 import { getDbRuntime } from './client';
 import { applyMigrations, countAppliedMigrations, EXPECTED_MIGRATION_COUNT } from './migrate';
 
@@ -35,6 +36,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Migration failed:', err instanceof Error ? err.message : err);
+  console.error('Migration failed:', isAppError(err) ? err.message : JSON.stringify(describeErrorForLog(err)));
   process.exit(1);
 });
