@@ -49,7 +49,7 @@ export const importPayloadSchema = z.object({
       sourceSheet: z.string().min(1).max(500),
       sourceRow: z.number().int().min(1),
       rawCells: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .refine((v) => JSON.stringify(v).length <= 20_000, 'rawCells too large')
         .optional(),
     })

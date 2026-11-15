@@ -22,7 +22,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 // The WebAuthn response objects are verified by the server library. Here we only check their shape.
-const webauthnResponse = z.object({ id: z.string().min(1), response: z.record(z.unknown()) }).passthrough();
+const webauthnResponse = z.object({ id: z.string().min(1), response: z.record(z.string(), z.unknown()) }).passthrough();
 
 const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('register_options') }),
