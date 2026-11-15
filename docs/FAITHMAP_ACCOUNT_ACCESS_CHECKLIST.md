@@ -40,6 +40,15 @@
 - [ ] **N-2** Set `AUTH_SESSION_PEPPER` and `CRON_SECRET` in Vercel (Production, Preview) as sensitive values of 32+ random characters. Free. If skipped: production refuses to run.
 - [ ] **N-3** Do **not** set `LINE_OA_CHANNEL_ACCESS_TOKEN` yet. A quota guard does not exist. Free. If set too early: real messages could be sent and use the free quota.
 
+### Round 2 owner actions (from the master status)
+
+- [ ] **R2-1** Read the **LINE Developers Agreement** (https://terms2.line.me/LINE_Developers_Agreement). Using the LIFF SDK means you accept it. I could not read it. **Free:** no fee found. **If not done:** unknown terms apply to the app.
+- [ ] **R2-2** Answer the 3 Gate 1 questions in `FAITHMAP_MASTER_EXECUTION_STATUS.md` (duplicate names across groups, growth column letters Y–AD, locking decided issues).
+- [ ] **R2-3** After Neon exists, from your own terminal, in this order: `FAITHMAP_CONFIRM_MIGRATE_HOST=<host> DATABASE_URL=<direct url> npm run db:migrate`, then `npm run db:bootstrap-admin`. Use the Neon **direct** host for migrations and the **pooled** host in Vercel. **Free:** yes. **If skipped:** production shows "database not ready".
+- [ ] **R2-4** Set `APP_BASE_URL` (exact production origin, https) in Vercel. **If not set:** passkeys and the origin check do not work.
+- [ ] **R2-5** After the LINE channel exists, run checks C1–C5 in `FAITHMAP_LINE_AUTH_DESIGN.md` with a real phone. Return: the decoded token claim names (not values), and what the LIFF app does after logout and login.
+- [ ] **R2-6** Say "approve push" to publish commits `010ef84` and later.
+
 ## C. Vercel (after Gate 0)
 
 - [ ] C-1 Create project `faithmap`. Import `tlckalasinchurch/faithmap`.

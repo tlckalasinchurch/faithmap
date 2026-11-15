@@ -48,6 +48,8 @@ export async function verifyLineIdToken(input: {
       'ระบบเข้าสู่ระบบด้วย LINE ยังไม่พร้อมใช้งาน กรุณาติดต่อผู้ดูแลระบบ'
     );
   }
+  // The development-only mock adapter sends a token that starts with MOCK. It is never a real token.
+  if (input.idToken.startsWith('MOCK')) throw invalid('mock_token');
   const requireNonce = input.requireNonce ?? true;
   if (!input.idToken || (requireNonce && !input.expectedNonce)) throw invalid('missing_input');
 

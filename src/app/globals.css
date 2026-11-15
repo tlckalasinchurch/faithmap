@@ -195,7 +195,7 @@ a {
     border: 2px solid var(--fm-ink);
     border-radius: 9999px;
     padding: 0.25rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: 1rem; /* project minimum for body text is 16px */
     font-weight: 700;
     box-shadow: 2px 2px 0px #141413;
   }

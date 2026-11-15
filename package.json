@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",
+    "@line/liff": "^2.32.0",
     "@simplewebauthn/server": "^14.1.0",
     "drizzle-orm": "^0.45.4",
     "lucide-react": "^1.72.0",
