@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readJsonBody, safeValidationIssues } from '@/server/http/body';
 import { z } from 'zod';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
@@ -88,11 +89,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { db, actor } = await requireAuth(req);
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const parsed = careActionSchema.safeParse(body);
     if (!parsed.success) {
       throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลแคร์ไม่ถูกต้อง', {
-        issues: parsed.error.issues,
+        issues: safeValidationIssues(parsed.error.issues),
       });
     }
 

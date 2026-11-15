@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readJsonBody, safeValidationIssues } from '@/server/http/body';
 import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getReadyDb } from '@/server/db/bootstrap';
@@ -28,8 +29,8 @@ export const dynamic = 'force-dynamic';
 const authActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('login_password'),
-    username: z.string().min(1),
-    password: z.string().min(1),
+    username: z.string().min(1).max(80),
+    password: z.string().min(1).max(200),
   }),
   z.object({
     action: z.literal('demo_switch'),
@@ -97,11 +98,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     assertSameOrigin(req);
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const parsed = authActionSchema.safeParse(body);
     if (!parsed.success) {
       throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลคำขอเข้าสู่ระบบไม่ถูกต้อง', {
-        issues: parsed.error.issues,
+        issues: safeValidationIssues(parsed.error.issues),
       });
     }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readJsonBody, safeValidationIssues, JSON_LIMITS } from '@/server/http/body';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { runWithIdempotency } from '@/server/modules/audit/service';
 import { AppError } from '@/server/modules/errors';
@@ -36,11 +37,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { db, actor } = await requireAuth(req);
-    const rawBody = await req.json();
+    const rawBody = await readJsonBody(req, { maxBytes: JSON_LIMITS.reports });
     const parsed = reportActionSchema.safeParse(rawBody);
     if (!parsed.success) {
       throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลรายงานไม่ครบถ้วนหรือไม่ถูกต้อง', {
-        issues: parsed.error.issues,
+        issues: safeValidationIssues(parsed.error.issues),
       });
     }
 

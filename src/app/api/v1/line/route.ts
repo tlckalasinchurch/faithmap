@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readJsonBody } from '@/server/http/body';
 import { z } from 'zod';
 import { getReadyDb } from '@/server/db/bootstrap';
 import {
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     assertSameOrigin(req);
-    const parsed = actionSchema.safeParse(await req.json().catch(() => null));
+    const parsed = actionSchema.safeParse(await readJsonBody(req).catch((e) => { if (e instanceof AppError && e.status === 413) throw e; return null; }));
     if (!parsed.success) {
       throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลคำขอไม่ถูกต้อง');
     }

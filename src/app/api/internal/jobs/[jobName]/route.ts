@@ -1,3 +1,4 @@
+import { readJsonBody } from '@/server/http/body';
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, lte } from 'drizzle-orm';
 import { getReadyDb } from '@/server/db/bootstrap';
@@ -34,7 +35,7 @@ export async function POST(
   }
 
   if (jobName === 'generate_meeting_brief') {
-    const body = await req.json().catch(() => ({}));
+    const body = (await readJsonBody(req).catch(() => ({}))) as { periodId?: string };
     const explicitPeriodId =
       body && typeof body.periodId === 'string' ? body.periodId : null;
 
