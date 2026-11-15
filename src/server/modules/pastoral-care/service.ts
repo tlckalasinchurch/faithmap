@@ -412,8 +412,11 @@ export async function listScopedFollowUps(db: FaithMapDb, actor: ActorContext) {
     })
     .map((item) => {
       const grp = groupMap.get(item.groupId);
+      // DEC-06: care notes are restricted like absence notes. A pastor sees the list, not the notes.
+      const canReadNotes = canViewUnmaskedGroupPii(actor, grp?.id, grp?.bodyId);
       return {
         ...item,
+        notes: canReadNotes ? item.notes : null,
         groupName: grp?.nameTh ?? '-',
       };
     });

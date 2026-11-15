@@ -17,6 +17,7 @@ import { recordReportAudit, recordSecurityAudit } from '../audit/service';
 import {
   assertCanAccessGroup,
   canAccessGroup,
+  canViewUnmaskedGroupPii,
   isAdmin,
   isBodyLeaderForBody,
   isGroupLeaderForGroup,
@@ -357,9 +358,14 @@ export async function getReportDetailForGroup(
         .where(eq(reportAuditEvents.weeklyReportId, report.id))
         .orderBy(desc(reportAuditEvents.createdAt));
 
+  // DEC-06: absence notes are restricted. Only direct stewards, the Body Leader and admins read them.
+  // A pastor (mission_leader) can read the report but not these notes.
+  const canReadAbsenceNotes = canViewUnmaskedGroupPii(actor, grp.id, grp.bodyId);
+  const visibleAttendance = canReadAbsenceNotes ? attRows : attRows.map((r) => ({ ...r, notes: null }));
+
   return {
     report: masked,
-    attendanceRecords: attRows,
+    attendanceRecords: visibleAttendance,
     auditEvents: auditRows,
   };
 }
