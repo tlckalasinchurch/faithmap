@@ -9,6 +9,7 @@ import {
   userPasskeys,
   users,
 } from '@/server/db/schema';
+import { purgeExpiredAuthData } from './cleanup';
 import { AppError } from '../errors';
 import { recordSecurityAudit } from '../audit/service';
 import { generateOpaqueToken, hashSessionToken } from '../identity/crypto';
@@ -95,6 +96,9 @@ export async function createLineChallenge(
       throw new AppError(429, 'RATE_LIMITED', 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่');
     }
   }
+
+  // Housekeeping without a scheduler: remove a small batch of long-expired rows. It must never block sign-in.
+  await purgeExpiredAuthData(db, new Date(), { limit: 100 }).catch(() => undefined);
 
   const nonce = generateOpaqueToken();
   const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);

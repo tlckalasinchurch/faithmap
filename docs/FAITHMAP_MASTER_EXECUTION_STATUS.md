@@ -164,11 +164,27 @@ An existing test (`workflow-and-constraints`) created the brief in mid-week. Tha
 | G2-1 | ~~High~~ **Reviewed in round 3** | See "Authorization review of the older routes" below. 10 defects fixed. 6 owner decisions open. |
 | G2-2 | Medium | Rate limit uses `x-forwarded-for`. Safe on Vercel. Not safe behind an unknown proxy. Only password login and challenge creation are limited. |
 | G2-3 | Medium | A locked username blocks the real user for 15 minutes (accepted trade-off; your call). |
-| G2-4 | Medium | `auth_challenges` rows are never cleaned up. `used_id_tokens` is cleaned when a new token is saved. Add a scheduled cleanup (Gate 6). |
+| G2-4 | ~~Medium~~ **Closed in round 6** | Challenge and used-token cleanup built and tested (see Round 6). |
 | G2-5 | Medium | No session revocation on password change (no password-change feature exists yet). |
 | G2-6 | Medium | Logs and error text were not scanned for PII. Also not done: a review of input limits on `organization` and `pastoral` routes. (Report and ingestion routes have limits.) |
 | G2-7 | Medium | `ensureSeeded` and demo accounts still exist for local use. The default password `FaithMap2026!` is public in the source. They never run in production. |
 | G2-8 | Low | Older inline-DDL databases (local `.data`) cannot be upgraded. Delete `.data` and start again. No other database exists. |
+
+---
+
+## Round 6 — challenge and used-token cleanup (G2-4)
+
+- **Problem:** `auth_challenges` (one row per sign-in attempt) grew without limit, and `used_id_tokens` was cleaned only when a new token was saved. On Neon Free (0.5 to 1 GB) unbounded growth is a cost and availability risk. Rows also hold the caller IP address.
+- **Built:** `purgeExpiredAuthData` (`src/server/modules/line-identity/cleanup.ts`).
+  - Deletes a challenge **1 hour after it expires** (used or not). Deletes a used ID token **10 minutes after it expires**. The margin covers clock differences, so cleanup cannot open a replay window: LINE ID tokens live 1 hour and the verifier already refuses an expired token.
+  - Bounded: at most 1000 rows per table per call (default). It reports `more: true` when the limit is reached.
+  - **Never touches** audit logs, users, sessions or registration requests (tested by row counts).
+- **Two triggers, so it does not wait for the scheduler decision (B-2):**
+  1. Opportunistic: creating a challenge removes up to 100 old rows. A failure is ignored and never blocks sign-in.
+  2. Job `POST /api/internal/jobs/cleanup_auth_data`, protected by the cron secret (`Authorization: Bearer`). It returns counts only. Wire it to a schedule when B-2 is decided.
+- **Tests:** `tests/gate12-challenge-cleanup.test.ts`, 9 tests: old rows deleted; live, used-but-unexpired and recently expired rows kept; token grace margin; batch limit over several calls; idempotent and safe on an empty database; audit, users and registration rows unchanged; challenge creation cleans up and the new challenge still works; the job returns `401` without the secret, with a wrong secret and with a non-Bearer scheme, and returns counts only with the right secret. Plus **one real PostgreSQL test**: three purges at once, all succeed, the live row stays, every expired row is gone.
+- **Results:** typecheck exit 0. Local tests: 263 passed, 16 skipped (the skipped file is real PostgreSQL). Real PostgreSQL 16.15: 16 passed. Build exit 0. CI result for this commit is recorded below only after GitHub reports it.
+- **Not done:** the cleanup has no schedule yet (needs B-2). Session rows (`sessions`) are not purged: expired sessions stay until a separate retention rule is decided (low volume, about 100 users).
 
 ---
 
@@ -241,7 +257,7 @@ Full report: `FAITHMAP_LINE_MINIAPP_READINESS.md`. Summary:
 | B-2 (Gate 0) | Blocker | Scheduler decision. |
 | R-1 | Medium | In-memory rate limit does not stop a distributed attack. |
 | R-2 | Medium | Older test files still run on PGlite only (CI runs the real-PostgreSQL file). |
-| R-3 | Low | `auth_challenges` cleanup missing (G2-4). |
+| R-3 | ~~Low~~ Closed | Challenge cleanup built (Round 6). |
 | R-4 | Low | GitHub Actions Node 20 runtime deprecation warning. |
 | R-5 | Info | 4 moderate dev-tool advisories (B-6). |
 
@@ -406,6 +422,5 @@ See `FAITHMAP_ACCOUNT_ACCESS_CHECKLIST.md`. New items from this round:
 ## Next executable tasks (no owner input needed)
 
 1. Run all older test files on real PostgreSQL (needs a test-runtime switch).
-2. Add challenge cleanup (G2-4).
-3. Update the workflow actions to Node 24 ready versions after checking the current majors.
-4. Evaluate a newer `drizzle-kit` for the 4 moderate advisories.
+2. Update the workflow actions to Node 24 ready versions after checking the current majors.
+3. Evaluate a newer `drizzle-kit` for the 4 moderate advisories.

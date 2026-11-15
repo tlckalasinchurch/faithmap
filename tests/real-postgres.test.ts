@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import * as schema from '@/server/db/schema';
 import { createDbRuntimeFromEnv, type DbRuntime } from '@/server/db/client';
+import { purgeExpiredAuthData, CHALLENGE_RETENTION_MS } from '@/server/modules/line-identity/cleanup';
 import { assertMigrated, countAppliedMigrations, ensureSchema, EXPECTED_MIGRATION_COUNT } from '@/server/db/migrate';
 import { createFirstSuperAdmin } from '@/server/modules/identity/bootstrap';
 import { listDecisionHistory, resolveDataQualityIssue, stageImportBatch } from '@/server/modules/ingestion/service';
@@ -269,6 +270,22 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
     const codes2 = round2.map((r) => (r.status === 'rejected' ? (r.reason as { code?: string }).code : 'ok')).sort();
     expect(codes2.filter((c) => c === 'ok')).toHaveLength(1);
     expect(await listDecisionHistory(rt.db, admin, issue!.id)).toHaveLength(2);
+  });
+
+  it('Cleanup: two purges at once delete every expired challenge and fail on nothing', async () => {
+    const old = new Date(Date.now() - CHALLENGE_RETENTION_MS - 60_000);
+    await rt.db.insert(schema.authChallenges).values(
+      Array.from({ length: 40 }, (_, i) => ({ purpose: 'line_login', nonceHash: `race-clean-${i}`, expiresAt: old }))
+    );
+    const live = await rt.db.insert(schema.authChallenges).values({ purpose: 'line_login', nonceHash: 'race-clean-live', expiresAt: new Date(Date.now() + 60_000) }).returning();
+    const results = await Promise.allSettled([purgeExpiredAuthData(rt.db), purgeExpiredAuthData(rt.db), purgeExpiredAuthData(rt.db, new Date(), { limit: 7 })]);
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    await purgeExpiredAuthData(rt.db);
+    const left = await rt.db.select().from(schema.authChallenges).where(eq(schema.authChallenges.nonceHash, 'race-clean-live'));
+    expect(left).toHaveLength(1);
+    expect(left[0]!.id).toBe(live[0]!.id);
+    const old2 = await rt.db.select().from(schema.authChallenges).where(sql`${schema.authChallenges.nonceHash} LIKE 'race-clean-%' AND ${schema.authChallenges.nonceHash} <> 'race-clean-live'`);
+    expect(old2).toHaveLength(0);
   });
 
   it('creates exactly one super_admin when two bootstrap runs race (run last: it changes seed roles)', async () => {

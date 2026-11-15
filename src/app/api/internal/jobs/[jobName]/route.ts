@@ -4,6 +4,7 @@ import { and, eq, lte } from 'drizzle-orm';
 import { getReadyDb } from '@/server/db/bootstrap';
 import { isCronRequestAuthorized } from '@/server/http/cron-auth';
 import { reportingPeriods } from '@/server/db/schema';
+import { purgeExpiredAuthData } from '@/server/modules/line-identity/cleanup';
 import {
   executeCutoffCheckJob,
   generateMeetingBriefForPeriod,
@@ -31,6 +32,12 @@ export async function POST(
 
   if (jobName === 'cutoff_check') {
     const result = await executeCutoffCheckJob(db, new Date());
+    return NextResponse.json({ ok: true, jobName, result });
+  }
+
+  if (jobName === 'cleanup_auth_data') {
+    // Counts only. No row content is returned or logged.
+    const result = await purgeExpiredAuthData(db, new Date());
     return NextResponse.json({ ok: true, jobName, result });
   }
 
