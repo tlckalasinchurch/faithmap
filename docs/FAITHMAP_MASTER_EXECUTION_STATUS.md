@@ -2,7 +2,7 @@
 
 **Updated:** 2026-11-15 · **Branch:** `claude/vigilant-noether-4fn1g1` · **`main` is unchanged (`e38a24e`).**
 **Budget:** 0 THB/month. No paid service was used, created or enabled.
-**Push / merge / deploy:** none done beyond the approved pushes of `8818ef4` and `f7c65bd`. Later commits are local.
+**Push / merge / deploy:** the feature branch was pushed after the tests above passed (round-2 Git rules). `main` was not touched. No pull request was opened. Nothing was deployed.
 
 ## Gate overview
 
@@ -26,9 +26,9 @@ No gate is PASSED. Gate 0 has critical blockers.
 |---|---|---|
 | `8818ef4` | Phase 0 reports | yes |
 | `f7c65bd` | Demo/LINE takeover fixes, first LINE identity flow, bootstrap admin | yes |
-| `010ef84` | Migration history, passkeys, session and TLS hardening, LIFF-compatible LINE verification | no |
-| `484fdb1` | Phase 3B review fixes (rollback, member merge, roles, validation) | no |
-| (next) | Gate 4 MINI App, growth API, status update | no |
+| `010ef84` | Migration history, passkeys, session and TLS hardening, LIFF-compatible LINE verification | yes |
+| `484fdb1` | Phase 3B review fixes (rollback, member merge, roles, validation) | yes |
+| `4e60ae7` | Gate 4 MINI App, growth API, status report | yes |
 
 ## Exact test results (commands run on 2026-11-15)
 
@@ -204,7 +204,6 @@ See `FAITHMAP_ACCOUNT_ACCESS_CHECKLIST.md`. New items from this round:
 2. Answer the 3 Gate 1 policy questions.
 3. When the database exists: run `npm run db:migrate` (with `FAITHMAP_CONFIRM_MIGRATE_HOST`), then `npm run db:bootstrap-admin`, from your own terminal.
 4. Run LINE checks C1–C5 in the design document once the channel exists.
-5. Approve pushing commits `010ef84` and later.
 
 ## Free-tier cost and quota risks
 
