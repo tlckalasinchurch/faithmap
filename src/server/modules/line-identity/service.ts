@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
-import { and, count, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNull, lt } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   authChallenges,
   externalIdentities,
   lineRegistrationRequests,
+  usedIdTokens,
   userPasskeys,
   users,
 } from '@/server/db/schema';
@@ -17,7 +18,14 @@ import {
 } from '../identity/service';
 import { verifyLineIdToken, type LineIdTokenClaims } from './verifier';
 
-export type ChallengePurpose = 'line_link' | 'line_login' | 'line_register';
+export type ChallengePurpose =
+  | 'line_link'
+  | 'line_login'
+  | 'line_register'
+  | 'passkey_register'
+  | 'passkey_login';
+
+const PURPOSES_BOUND_TO_USER: ChallengePurpose[] = ['line_link', 'passkey_register'];
 
 export interface LineDeps {
   verifyIdToken: (idToken: string, expectedNonce: string) => Promise<LineIdTokenClaims>;
@@ -33,6 +41,7 @@ export function defaultLineDeps(): LineDeps {
       verifyLineIdToken({
         idToken,
         expectedNonce,
+        requireNonce: false, // LIFF ID tokens have no nonce. See consumeIdToken().
         channelId: process.env.LINE_LOGIN_CHANNEL_ID ?? '',
       }),
   };
@@ -64,10 +73,11 @@ export async function createLineChallenge(
   userId: string | null,
   ipAddress: string | null = null
 ): Promise<{ challengeId: string; nonce: string; expiresAt: Date }> {
-  if (purpose === 'line_link' && !userId) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'การเชื่อม LINE ต้องเข้าสู่ระบบก่อน');
+  const needsUser = PURPOSES_BOUND_TO_USER.includes(purpose);
+  if (needsUser && !userId) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'รายการนี้ต้องเข้าสู่ระบบก่อน');
   }
-  if (purpose !== 'line_link' && userId) {
+  if (!needsUser && userId) {
     throw new AppError(400, 'VALIDATION_ERROR', 'ประเภทคำขอไม่ถูกต้อง');
   }
 
@@ -102,7 +112,7 @@ export async function createLineChallenge(
 }
 
 /** Atomically marks a challenge as used. One challenge can be used exactly once. */
-async function consumeChallenge(
+export async function consumeChallenge(
   db: FaithMapDb,
   input: { challengeId: string; nonce: string },
   purpose: ChallengePurpose,
@@ -126,6 +136,34 @@ async function consumeChallenge(
   if (rows.length === 0) throw challengeInvalid();
 }
 
+/**
+ * Marks an ID token as used. A token that was used before is rejected.
+ * LIFF tokens are valid for one hour and have no nonce, so single use limits replay.
+ */
+async function consumeIdToken(
+  db: FaithMapDb,
+  idToken: string,
+  claims: LineIdTokenClaims
+): Promise<void> {
+  const now = new Date();
+  await db.delete(usedIdTokens).where(lt(usedIdTokens.expiresAt, now));
+  const rows = await db
+    .insert(usedIdTokens)
+    .values({
+      tokenHash: hashSessionToken(idToken),
+      expiresAt: new Date(Math.max(claims.exp * 1000, Date.now()) + 60_000),
+    })
+    .onConflictDoNothing()
+    .returning({ tokenHash: usedIdTokens.tokenHash });
+  if (rows.length === 0) {
+    throw new AppError(
+      401,
+      'LINE_TOKEN_REPLAYED',
+      'โทเคน LINE นี้ถูกใช้ไปแล้ว กรุณาปิดแล้วเปิดแอปใหม่ แล้วลองอีกครั้ง'
+    );
+  }
+}
+
 function isUniqueViolation(err: unknown): boolean {
   const code = (err as { code?: string; cause?: { code?: string } })?.code
     ?? (err as { cause?: { code?: string } })?.cause?.code;
@@ -140,6 +178,7 @@ export async function linkLineIdentity(
 ): Promise<{ linked: true }> {
   await consumeChallenge(db, input, 'line_link', actor.user.id);
   const claims = await deps.verifyIdToken(input.idToken, input.nonce);
+  await consumeIdToken(db, input.idToken, claims);
 
   const [bySubject] = await db
     .select()
@@ -219,6 +258,7 @@ export async function loginWithLine(
 ) {
   await consumeChallenge(db, input, 'line_login', null);
   const claims = await deps.verifyIdToken(input.idToken, input.nonce);
+  await consumeIdToken(db, input.idToken, claims);
 
   const [identity] = await db
     .select()
@@ -313,6 +353,7 @@ export async function requestLineRegistration(
 
   await consumeChallenge(db, input, 'line_register', null);
   const claims = await deps.verifyIdToken(input.idToken, input.nonce);
+  await consumeIdToken(db, input.idToken, claims);
 
   const [linked] = await db
     .select({ id: externalIdentities.id })

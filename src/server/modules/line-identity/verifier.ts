@@ -31,6 +31,12 @@ function invalid(reason: string): AppError {
 export async function verifyLineIdToken(input: {
   idToken: string;
   expectedNonce: string;
+  /**
+   * Default true. LIFF and MINI App ID tokens carry no nonce: `liff.login()` has no nonce option
+   * and LINE adds the claim only when the authorization request has one. For those tokens pass
+   * false and rely on single-use token tracking in the service.
+   */
+  requireNonce?: boolean;
   channelId: string;
   fetchImpl?: typeof fetch;
   nowSeconds?: number;
@@ -42,7 +48,8 @@ export async function verifyLineIdToken(input: {
       'ระบบเข้าสู่ระบบด้วย LINE ยังไม่พร้อมใช้งาน กรุณาติดต่อผู้ดูแลระบบ'
     );
   }
-  if (!input.idToken || !input.expectedNonce) throw invalid('missing_input');
+  const requireNonce = input.requireNonce ?? true;
+  if (!input.idToken || (requireNonce && !input.expectedNonce)) throw invalid('missing_input');
 
   const doFetch = input.fetchImpl ?? fetch;
   let res: Response;
@@ -75,7 +82,8 @@ export async function verifyLineIdToken(input: {
   if (claims.aud !== input.channelId) throw invalid('audience');
   if (typeof claims.sub !== 'string' || claims.sub.length === 0) throw invalid('subject');
   if (typeof claims.exp !== 'number' || claims.exp <= now) throw invalid('expired');
-  if (typeof claims.nonce !== 'string' || claims.nonce !== input.expectedNonce) {
+  if (typeof claims.iat !== 'number' || claims.iat > now + 120) throw invalid('issued_in_future');
+  if (requireNonce && (typeof claims.nonce !== 'string' || claims.nonce !== input.expectedNonce)) {
     throw invalid('nonce');
   }
 

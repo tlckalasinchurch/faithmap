@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getReadyDb } from '@/server/db/bootstrap';
 import {
+  assertSameOrigin,
   getRequestMeta,
   handleRouteError,
   requireAuth,
@@ -62,6 +63,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    assertSameOrigin(req);
     const parsed = actionSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลคำขอไม่ถูกต้อง');

@@ -32,6 +32,21 @@ export function verifyPassword(plainPassword: string, storedHash: string | null)
   return crypto.timingSafeEqual(derived, storedBuf);
 }
 
+let dummyHash: string | null = null;
+
+/**
+ * Checks a password. When the account does not exist (or has no password), it still does the same
+ * amount of work, so response time does not reveal which usernames exist.
+ */
+export function verifyPasswordUniform(plainPassword: string, storedHash: string | null): boolean {
+  if (!storedHash || !storedHash.startsWith('scrypt$')) {
+    dummyHash ??= hashPassword(crypto.randomBytes(16).toString('hex'));
+    verifyPassword(plainPassword, dummyHash);
+    return false;
+  }
+  return verifyPassword(plainPassword, storedHash);
+}
+
 export function generateOpaqueToken(): string {
   return crypto.randomBytes(32).toString('base64url');
 }

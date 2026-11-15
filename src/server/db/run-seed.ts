@@ -1,5 +1,5 @@
 import { getDbRuntime } from './client';
-import { ensureSchema } from './migrate';
+import { prepareSchema } from './migrate';
 import { ensureSeeded, isExplicitSeedAllowed } from './seed';
 
 async function main() {
@@ -10,7 +10,7 @@ async function main() {
       'Refusing to seed a remote PostgreSQL database. Set FAITHMAP_ALLOW_REMOTE_SEED=true only for a synthetic staging database.'
     );
   }
-  await ensureSchema(runtime);
+  await prepareSchema(runtime);
   const inserted = await ensureSeeded(runtime.db);
   console.log(
     inserted

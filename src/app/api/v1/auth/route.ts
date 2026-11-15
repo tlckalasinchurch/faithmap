@@ -6,6 +6,7 @@ import { users } from '@/server/db/schema';
 import {
   clearSessionCookies,
   CSRF_COOKIE,
+  assertSameOrigin,
   extractRawSessionToken,
   getRequestMeta,
   handleRouteError,
@@ -14,7 +15,6 @@ import {
 } from '@/server/http/session';
 import {
   authenticateSessionToken,
-  enrollPasskey,
   isDemoModeEnabled,
   loginWithPassword,
   logoutBySessionToken,
@@ -37,12 +37,6 @@ const authActionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('logout'),
-  }),
-  z.object({
-    action: z.literal('enroll_passkey'),
-    credentialId: z.string().min(4),
-    publicKeyB64: z.string().min(8),
-    deviceLabel: z.string().min(1).max(80),
   }),
 ]);
 
@@ -102,6 +96,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    assertSameOrigin(req);
     const body = await req.json();
     const parsed = authActionSchema.safeParse(body);
     if (!parsed.success) {
@@ -119,16 +114,6 @@ export async function POST(req: NextRequest) {
       const res = NextResponse.json({ ok: true, authenticated: false });
       clearSessionCookies(res);
       return res;
-    }
-
-    if (data.action === 'enroll_passkey') {
-      const { actor } = await requireAuth(req, { db });
-      const created = await enrollPasskey(db, actor.user.id, {
-        credentialId: data.credentialId,
-        publicKeyB64: data.publicKeyB64,
-        deviceLabel: data.deviceLabel,
-      });
-      return NextResponse.json({ ok: true, passkey: created }, { status: 201 });
     }
 
     let loginResult: Awaited<ReturnType<typeof loginWithPassword>>;

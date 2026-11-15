@@ -1097,7 +1097,7 @@ export const authChallenges = pgTable(
   (t) => [
     check(
       'auth_challenges_purpose_chk',
-      sql`${t.purpose} IN ('line_link', 'line_login', 'line_register')`
+      sql`${t.purpose} IN ('line_link', 'line_login', 'line_register', 'passkey_register', 'passkey_login')`
     ),
     index('auth_challenges_expires_idx').on(t.expiresAt),
   ]
@@ -1132,4 +1132,15 @@ export const lineRegistrationRequests = pgTable(
       .where(sql`${t.status} = 'pending'`),
     index('line_registration_status_idx').on(t.status, t.createdAt),
   ]
+);
+
+/** Hashes of LINE ID tokens that were already used. LIFF tokens have no nonce, so each token is single-use. */
+export const usedIdTokens = pgTable(
+  'used_id_tokens',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('used_id_tokens_expires_idx').on(t.expiresAt)]
 );

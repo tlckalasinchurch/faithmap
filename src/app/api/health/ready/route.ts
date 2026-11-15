@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { AppError } from '@/server/modules/errors';
 import { sql } from 'drizzle-orm';
 import { getReadyRuntime } from '@/server/db/bootstrap';
 import { ensureActiveReportingPeriod } from '@/server/modules/reporting/service';
@@ -17,12 +18,8 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: err instanceof Error ? err.message : 'Database readiness check failed',
-      },
-      { status: 503 }
-    );
+    // Never return driver messages: they can contain host names or query text.
+    const code = err instanceof AppError ? err.code : 'NOT_READY';
+    return NextResponse.json({ ok: false, code }, { status: 503 });
   }
 }

@@ -9,6 +9,41 @@ export const PROD_SESSION_COOKIE = '__Host-faithmap_session';
 export const DEV_SESSION_COOKIE = 'faithmap_session';
 export const CSRF_COOKIE = 'faithmap_csrf';
 
+/** Production always uses Secure cookies, even if a proxy header is missing. */
+export function shouldUseSecureCookies(
+  req: Request,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return env.NODE_ENV === 'production' || isHttpsRequest(req);
+}
+
+/**
+ * CSRF defence in depth. A browser sends `Origin` on cross-site POST requests.
+ * If it is present, it must match the app origin (APP_BASE_URL, or the request host when unset).
+ */
+export function isAllowedOrigin(
+  originHeader: string | null,
+  req: Request,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  if (!originHeader) return true;
+  let allowed: string;
+  try {
+    allowed = env.APP_BASE_URL ? new URL(env.APP_BASE_URL).origin : new URL(req.url).origin;
+  } catch {
+    return false;
+  }
+  return originHeader === allowed;
+}
+
+export function assertSameOrigin(req: Request): void {
+  const method = req.method.toUpperCase();
+  if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return;
+  if (!isAllowedOrigin(req.headers.get('origin'), req)) {
+    throw new AppError(403, 'ORIGIN_MISMATCH', 'คำขอนี้มาจากเว็บไซต์ที่ไม่ได้รับอนุญาต');
+  }
+}
+
 export function isHttpsRequest(req: Request): boolean {
   const proto = req.headers.get('x-forwarded-proto');
   if (proto) return proto.split(',')[0]?.trim() === 'https';
@@ -39,6 +74,7 @@ export async function requireAuth(
   }
 
   const method = req.method.toUpperCase();
+  assertSameOrigin(req);
   const usesCookieAuth =
     Boolean(req.cookies.get(PROD_SESSION_COOKIE)?.value) ||
     Boolean(req.cookies.get(DEV_SESSION_COOKIE)?.value);
@@ -63,7 +99,7 @@ export function setSessionCookies(
   sessionToken: string,
   csrfToken: string
 ) {
-  const secure = isHttpsRequest(req);
+  const secure = shouldUseSecureCookies(req);
   const cookieName = secure ? PROD_SESSION_COOKIE : DEV_SESSION_COOKIE;
   res.cookies.set(cookieName, sessionToken, {
     httpOnly: true,

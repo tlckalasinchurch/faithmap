@@ -1,5 +1,5 @@
 import { getDbRuntime } from './client';
-import { ensureSchema } from './migrate';
+import { prepareSchema } from './migrate';
 import { createFirstSuperAdmin } from '../modules/identity/bootstrap';
 
 // Usage (owner, local terminal; values come from the owner's own shell, never from chat):
@@ -11,7 +11,7 @@ async function main() {
   const password = process.env.FAITHMAP_BOOTSTRAP_PASSWORD ?? '';
   const runtime = getDbRuntime();
   try {
-    await ensureSchema(runtime);
+    await prepareSchema(runtime); // remote databases must already be migrated (npm run db:migrate)
     const created = await createFirstSuperAdmin(runtime.db, { username, displayName, password });
     console.log(`Super admin created: ${created.username}`);
   } finally {

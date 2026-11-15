@@ -1,4 +1,4 @@
-import { and, count, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
@@ -17,7 +17,7 @@ import {
   generateOpaqueToken,
   hashPassword,
   hashSessionToken,
-  verifyPassword,
+  verifyPasswordUniform,
 } from './crypto';
 
 export type SystemRole = 'super_admin' | 'admin' | 'mission_leader' | 'standard_user';
@@ -236,7 +236,7 @@ export async function issueSessionForUser(
   const csrfToken = generateOpaqueToken();
   const tokenHash = hashSessionToken(rawToken);
   const csrfTokenHash = hashSessionToken(csrfToken);
-  const expiresAt = new Date(Date.now() + 7 * 24 * 3_600_000);
+  const expiresAt = new Date(Date.now() + SESSION_ABSOLUTE_MS);
 
   const [session] = await db
     .insert(authSessions)
@@ -255,6 +255,26 @@ export async function issueSessionForUser(
     .update(users)
     .set({ lastLoginAt: new Date(), updatedAt: new Date() })
     .where(eq(users.id, userRow.id));
+
+  // Keep at most MAX_SESSIONS_PER_USER live sessions. The oldest ones are revoked.
+  const live = await db
+    .select({ id: authSessions.id })
+    .from(authSessions)
+    .where(
+      and(
+        eq(authSessions.userId, userRow.id),
+        isNull(authSessions.revokedAt),
+        gt(authSessions.expiresAt, new Date())
+      )
+    )
+    .orderBy(desc(authSessions.createdAt));
+  const extra = live.slice(MAX_SESSIONS_PER_USER).map((s) => s.id);
+  if (extra.length > 0) {
+    await db
+      .update(authSessions)
+      .set({ revokedAt: new Date() })
+      .where(inArray(authSessions.id, extra));
+  }
 
   await recordSecurityAudit(db, {
     actorUserId: userRow.id,
@@ -283,7 +303,7 @@ export async function loginWithPassword(
     .from(users)
     .where(eq(users.username, normalizedUsername));
 
-  if (!userRow || !verifyPassword(plainPassword, userRow.passwordHash)) {
+  if (!userRow || !verifyPasswordUniform(plainPassword, userRow.passwordHash)) {
     await recordSecurityAudit(db, {
       actorUserId: userRow?.id ?? null,
       action: 'auth_login_password_failed',
@@ -310,6 +330,11 @@ export async function loginWithPassword(
 export function isDemoModeEnabled(): boolean {
   return process.env.FAITHMAP_DEMO_MODE === 'true' && process.env.NODE_ENV !== 'production';
 }
+
+export const SESSION_ABSOLUTE_MS = 7 * 24 * 3_600_000;
+export const SESSION_IDLE_MS = 72 * 3_600_000;
+export const SESSION_TOUCH_INTERVAL_MS = 5 * 60_000;
+export const MAX_SESSIONS_PER_USER = 10;
 
 export const PASSWORD_LOGIN_MAX_FAILURES_PER_USERNAME = 5;
 export const PASSWORD_LOGIN_MAX_FAILURES_PER_IP = 20;
@@ -390,6 +415,14 @@ export async function authenticateSessionToken(
   if (!session || session.expiresAt.getTime() <= Date.now()) {
     return null;
   }
+  const idleFor = Date.now() - session.lastSeenAt.getTime();
+  if (idleFor > SESSION_IDLE_MS) {
+    await db.update(authSessions).set({ revokedAt: new Date() }).where(eq(authSessions.id, session.id));
+    return null;
+  }
+  if (idleFor > SESSION_TOUCH_INTERVAL_MS) {
+    await db.update(authSessions).set({ lastSeenAt: new Date() }).where(eq(authSessions.id, session.id));
+  }
 
   const [userRow] = await db
     .select()
@@ -426,31 +459,6 @@ export async function logoutBySessionToken(
     targetId: session.id,
     outcome: 'success',
   });
-}
-
-export async function enrollPasskey(
-  db: FaithMapDb,
-  userId: string,
-  input: { credentialId: string; publicKeyB64: string; deviceLabel: string }
-) {
-  const [created] = await db
-    .insert(userPasskeys)
-    .values({
-      userId,
-      credentialId: input.credentialId,
-      publicKeyB64: input.publicKeyB64,
-      deviceLabel: input.deviceLabel,
-    })
-    .returning();
-
-  await recordSecurityAudit(db, {
-    actorUserId: userId,
-    action: 'passkey_enrolled',
-    targetType: 'user_passkey',
-    targetId: created!.id,
-    outcome: 'success',
-  });
-  return created!;
 }
 
 export async function createOrUpdateUserPassword(

@@ -35,14 +35,32 @@ function resolvePgliteDir(url: string | undefined): string {
   return path.resolve(/*turbopackIgnore: true*/ process.cwd(), '.data', 'faithmap-pg');
 }
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+/**
+ * Pool settings for a remote PostgreSQL URL.
+ * Certificates are always verified for non-local hosts. `sslmode` is removed from the URL
+ * because the pg driver would let it override the explicit `ssl` setting.
+ */
+export function buildPoolConfig(
+  url: string,
+  env: Record<string, string | undefined> = process.env
+): { connectionString: string; ssl: false | { rejectUnauthorized: true; ca?: string }; max: number } {
+  const parsed = new URL(url);
+  const local = LOCAL_HOSTS.has(parsed.hostname);
+  parsed.searchParams.delete('sslmode');
+  const max = Math.min(Math.max(Number(env.DATABASE_POOL_MAX ?? '5') || 5, 1), 20);
+  return {
+    connectionString: parsed.toString(),
+    ssl: local ? false : { rejectUnauthorized: true, ...(env.DATABASE_SSL_CA ? { ca: env.DATABASE_SSL_CA } : {}) },
+    max,
+  };
+}
+
 export function createDbRuntimeFromEnv(): DbRuntime {
   const url = process.env.DATABASE_URL;
   if (isRemotePostgresUrl(url)) {
-    const pool = new Pool({
-      connectionString: url,
-      max: 10,
-      ssl: url.includes('neon.tech') ? { rejectUnauthorized: false } : undefined,
-    });
+    const pool = new Pool(buildPoolConfig(url));
     const db = drizzlePg(pool, { schema }) as unknown as FaithMapDb;
     return {
       db,

@@ -8,7 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import * as schema from '@/server/db/schema';
 import { createDbRuntimeFromEnv, type DbRuntime } from '@/server/db/client';
-import { ensureSchema } from '@/server/db/migrate';
+import { assertMigrated, countAppliedMigrations, ensureSchema, EXPECTED_MIGRATION_COUNT } from '@/server/db/migrate';
+import { createFirstSuperAdmin } from '@/server/modules/identity/bootstrap';
 import { ensureSeeded, SEED_IDS } from '@/server/db/seed';
 import { buildActorContext, loginWithPassword } from '@/server/modules/identity/service';
 import { verifyLineIdToken, type LineIdTokenClaims } from '@/server/modules/line-identity/verifier';
@@ -118,14 +119,18 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
 
   it('keeps one pending request for two concurrent registrations of the same LINE identity', async () => {
     const token = 'r'.repeat(25);
-    const deps = fakeDeps({ [token]: 'Ureg0conc00000000000000000000000001' });
+    const token2 = 's'.repeat(25);
+    const deps = fakeDeps({
+      [token]: 'Ureg0conc00000000000000000000000001',
+      [token2]: 'Ureg0conc00000000000000000000000001',
+    });
     const [c1, c2] = await Promise.all([
       createLineChallenge(rt.db, 'line_register', null),
       createLineChallenge(rt.db, 'line_register', null),
     ]);
     const [a, b] = await Promise.all([
       requestLineRegistration(rt.db, { challengeId: c1.challengeId, nonce: c1.nonce, idToken: token, requestedName: 'A' }, deps),
-      requestLineRegistration(rt.db, { challengeId: c2.challengeId, nonce: c2.nonce, idToken: token, requestedName: 'A' }, deps),
+      requestLineRegistration(rt.db, { challengeId: c2.challengeId, nonce: c2.nonce, idToken: token2, requestedName: 'A' }, deps),
     ]);
     expect(a.id).toBe(b.id);
     const rows = await rt.db
@@ -157,5 +162,28 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
       .sort();
     expect(codes).toEqual(['REQUEST_ALREADY_DECIDED', 'ok']);
     expect((await rt.db.select().from(schema.users)).length).toBe(before + 1);
+  });
+  it('has every migration applied and the app agrees the database is ready', async () => {
+    expect(await countAppliedMigrations(rt)).toBe(EXPECTED_MIGRATION_COUNT);
+    await expect(assertMigrated(rt)).resolves.toBeUndefined();
+  });
+
+  it('blocks UPDATE and DELETE on audit logs with database triggers', async () => {
+    await expect(rt.db.execute(sql`UPDATE security_audit_logs SET reason = 'x'`)).rejects.toThrow();
+    await expect(rt.db.execute(sql`DELETE FROM security_audit_logs`)).rejects.toThrow();
+    const r = await rt.db.execute(sql`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname LIKE 'trg_%_immutable' AND NOT tgisinternal`);
+    expect((r as unknown as { rows: Array<{ n: number }> }).rows[0]!.n).toBe(3);
+  });
+
+  it('creates exactly one super_admin when two bootstrap runs race (run last: it changes seed roles)', async () => {
+    await rt.db.execute(sql`UPDATE users SET system_role = 'admin' WHERE system_role = 'super_admin'`);
+    const results = await Promise.allSettled([
+      createFirstSuperAdmin(rt.db, { username: 'owner-one', displayName: 'หนึ่ง', password: 'first-long-passphrase-2026' }),
+      createFirstSuperAdmin(rt.db, { username: 'owner-two', displayName: 'สอง', password: 'second-long-passphrase-2026' }),
+    ]);
+    const codes = results.map((r) => (r.status === 'rejected' ? (r.reason as { code?: string }).code : 'ok')).sort();
+    expect(codes).toEqual(['SUPER_ADMIN_EXISTS', 'ok']);
+    const admins = await rt.db.select().from(schema.users).where(eq(schema.users.systemRole, 'super_admin'));
+    expect(admins).toHaveLength(1);
   });
 });
