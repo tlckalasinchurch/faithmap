@@ -105,3 +105,14 @@ Passwords, channel secrets, access tokens, database URLs, private keys, member p
 | Section B complete | | |
 | Sections C–E complete | | |
 | Section F complete | | |
+
+### Round 5 owner actions (from the master status, section H)
+
+- [ ] **R5-1** Decide about the old `production` deployment built from the first commit (before the security fixes). Keep Vercel Authentication on until it is removed. (`V-A`, High while reachable)
+- [ ] **R5-2** Neon project and `development` branch. Run `db:migrate` and `db:bootstrap-admin` from your terminal. (`E-1`)
+- [ ] **R5-3** Vercel Preview variables: `AUTH_SESSION_PEPPER`, `CRON_SECRET`, `APP_BASE_URL`, `LINE_LOGIN_CHANNEL_ID`, `NEXT_PUBLIC_LIFF_ID`, `DATABASE_URL`. Values only in Vercel. (`E-2`)
+- [ ] **R5-4** Decide how the LINE browser can open the Vercel preview (turn Vercel Authentication off for Preview, or another way). (`E-3`)
+- [ ] **R5-5** Set the LIFF Endpoint URL to the FaithMap `/mini` URL. Never the LINE default URL. (`E-4`)
+- [ ] **R5-6** In the LINE console, check who can open a Developing MINI App and whether `localhost` is accepted. Report the answers.
+- [ ] **R5-7** Test LINE accounts and phones (iPhone, Android) for `FAITHMAP_REAL_DEVICE_TEST_PLAN.md`.
+- [ ] **R5-8** Optional: Vercel Firewall rate limits for `/api/v1/auth` and `/api/v1/line`.

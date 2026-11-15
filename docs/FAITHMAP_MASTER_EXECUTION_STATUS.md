@@ -10,9 +10,9 @@
 |---|---|---|
 | 0 Infrastructure readiness | **NEEDS OWNER APPROVAL** | B-1 (Vercel Hobby reply) and B-2 (scheduler) are open. No Vercel project, Neon project or LINE channel exists. |
 | 1 Phase 3B verification | **READY FOR OWNER REVIEW. Item 2 BLOCKED** | 8 + 2 defects fixed. Your 3 decisions are applied (see "Round 4"). Growth columns Y–AD stay unmapped: the source workbook is not available. |
-| 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. Older routes reviewed (10 defects fixed). Every protected route has a 401 test. PII-in-logs scan and input limits on `organization` and `pastoral` remain. |
-| 3 LINE identity and authentication | **BLOCKED** | Server side is built and checked against official docs. Real LINE cannot be tested without a channel. |
-| 4 LINE MINI App | **IN PROGRESS** | Screens and the weekly report form are built and browser-tested with the mock and local demo data. No real LINE, no real phone. |
+| 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. Round 5 closed the PII/secret scan, input limits and route-level authorization matrix (see Round 5). Open: real-PostgreSQL run of older tests, challenge cleanup, platform firewall. No Critical or High code finding is open. |
+| 3 LINE identity and authentication | **BLOCKED** | Server side built. A Developing channel now exists (owner-reported). Real LINE test needs a database, variables, a protection decision and the Endpoint URL (see `FAITHMAP_LINE_MINIAPP_READINESS.md`). |
+| 4 LINE MINI App | **IN PROGRESS** | Built and tested with the mock on desktop. Real device tests are **BLOCKED** (`FAITHMAP_REAL_DEVICE_TEST_PLAN.md`). |
 | 5 LINE OA messaging | NOT STARTED | |
 | 6 Scheduler | NOT STARTED | Needs B-2. |
 | 7 End-to-end QA | NOT STARTED | |
@@ -41,14 +41,14 @@ No gate is PASSED. Gate 0 has critical blockers.
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
-| `npx vitest run` | **22 files passed, 1 skipped; 178 tests passed, 15 skipped** (skipped = the real-PostgreSQL file, which needs a database URL) |
+| `npx vitest run` | **26 files passed, 1 skipped; 254 tests passed, 15 skipped** (skipped = real-PostgreSQL file, needs a database URL) |
 | `FAITHMAP_TEST_DATABASE_URL=postgres://…@127.0.0.1:5432/faithmap_test_a npx vitest run tests/real-postgres.test.ts` | **1 file passed; 15 tests passed** on local PostgreSQL 16.15 (adds the concurrent-decision race) |
 | `npx next build` | exit 0. Routes include `/mini`, `/api/v1/line`, `/api/v1/passkeys`, `/api/v1/growth` |
 | `npx next build` with `NEXT_PUBLIC_FAITHMAP_MOCK_LIFF=true` | exit 0. `grep` finds no mock token or mock label in `.next` (mock is not shipped) |
 | `npm ci --dry-run` | succeeds (lock file repaired) |
 | `node scripts/e2e-mini-report.mjs` (Chromium, dev server, mock LIFF, demo data, fresh `.data`) | **52 of 52 checks passed** (report form at 360, 768, 1280 px, plus the draft, submit, revision, supervisor and approval flows) |
 | `node scripts/e2e-mini.mjs` (re-run after the Reports screen change) | **84 of 84 checks passed** |
-| `.github/workflows/ci.yml` | YAML parses. **Not run on GitHub yet** (it runs when you push this branch with Actions enabled). The same commands pass locally. |
+| GitHub Actions run 43677777198 (pull request) and 43677775509 (push), commit `23addf7` | **Both succeeded**, about 3 minutes. Log: 23 files, 193 tests passed, including `real-postgres.test.ts` (15 tests, on the PostgreSQL 16.16 service container), then `next build` passed. Database URL masked in the log. See Round 5 for the run on the newest commit. |
 | `node scripts/e2e-mini.mjs` (Chromium, dev server, mock LIFF, demo mode) | **84 of 84 checks passed** at 360, 768 and 1280 px |
 | `npx impeccable detect src/components/mini` | exit 0. Regex-only mode. It states its findings are an undercount. |
 | `npx impeccable detect http://localhost:3100/mini` | exit 0, no output |
@@ -169,6 +169,94 @@ An existing test (`workflow-and-constraints`) created the brief in mid-week. Tha
 | G2-6 | Medium | Logs and error text were not scanned for PII. Also not done: a review of input limits on `organization` and `pastoral` routes. (Report and ingestion routes have limits.) |
 | G2-7 | Medium | `ensureSeeded` and demo accounts still exist for local use. The default password `FaithMap2026!` is public in the source. They never run in production. |
 | G2-8 | Low | Older inline-DDL databases (local `.data`) cannot be upgraded. Delete `.data` and start again. No other database exists. |
+
+---
+
+## Round 5 — CI proof, PII audit, input limits, authorization matrix, LINE readiness
+
+### A. GitHub Actions (priority 1)
+- **Result for `23addf7`: success** on both triggers (push, pull request). Job `verify`, about 3 minutes. Steps: `npm ci`, typecheck, tests, build. The log shows 23 test files, 193 tests passed, **no skip** of the real-PostgreSQL file (15 tests ran on the service container). Build passed.
+- **Log leak check:** the database URL appears as `***`. The PostgreSQL service log shows constraint errors from deliberate race tests: they contain generated ids and batch codes only (synthetic data). No token, secret, member name or phone in the log.
+- **Findings:** (1) the CI password is a throwaway test value written in the workflow (acceptable, documented). (2) Vite warned about a dynamic import in a test (cosmetic). (3) GitHub warns that Node 20 action runtimes are deprecated (`actions/checkout@v4`, `setup-node@v4` are forced to Node 24). (4) `npm audit`: 1 high and 4 moderate. See B-5.
+- The run for the newest commits is recorded at the end of this section.
+
+### B. PII and secret leakage audit (priority 2)
+Scope: all `src`, scripts, workflow, git history (secret pattern scan), logs, API errors, audit rows, LINE identity, import.
+
+| ID | Severity | Finding | Fix | Regression test |
+|---|---|---|---|---|
+| B-1 | **High** | Any unexpected error returned `err.message` to the client. A database error contains the **full SQL and the bound values** (names, phone numbers). A JSON syntax error echoed part of the body. Proven with a probe. | Unknown errors return a fixed Thai 500 message. JSON errors return `400 INVALID_JSON`. The server logs only error type, PostgreSQL code and constraint name (`describeErrorForLog`). | `gate8` (5 tests) |
+| B-2 | **Medium** | Failed-login audit rows stored the **typed username** as `targetId`. People type passwords there. Audit rows are permanent. | The key is now a peppered HMAC (`loginTargetKey`). The audit trail and the per-username rate limit still work. Nothing is deleted. | `gate8`: typed password absent from every audit column; 6th try still `429` |
+| B-3 | Low | Operator scripts (`db:migrate`, `db:seed`, `db:bootstrap-admin`) printed raw errors (bound values possible). | Same safe describer. | `gate8` static guard |
+| B-4 | Low | Validation errors returned library issue objects. | Only path and rule code are returned. | `gate9` |
+| B-5 | **High** (dependency) | `zod` 3.x: memory exhaustion on oversized constrained collections (npm advisory). | Upgraded to 4.6.7. Two `z.record` calls adapted. | all suites |
+| B-6 | Info | 4 moderate advisories, all in dev tooling (`drizzle-kit` → `esbuild`, dev-server request exposure). The offered fix is a downgrade to `drizzle-kit@0.18.1`. | **Not applied.** Dev tool only; never runs in production. Owner may accept the risk or ask me to evaluate a newer `drizzle-kit`. | n/a |
+
+- **No finding:** no committed secret in the tree or in the git history (pattern scan for connection strings, JWTs, cloud and GitHub tokens, private keys, channel secrets). The only credential-like strings are the throwaway CI password, fake URLs in tests, and `.local` demo emails (never created in production).
+- **Checked and correct:** LINE ID tokens are stored only as hashes; the LINE subject is never returned to reviewers; `actor.user` has no password hash; members' phone and email are masked for non-direct viewers; import issue text is PII-free (tested earlier); audit metadata holds ids only.
+- **New guard:** a static test fails if a `console.*` call appears outside four allowed files, or logs a raw error, token, password, secret, connection string or LINE id.
+- **Audit trail:** nothing was deleted or rewritten.
+
+### C. API input limits (priority 3) — `organization` and `pastoral`, and every other route
+- **Body size:** new `readJsonBody`: 64 KB default, 256 KB for reports, 8 MB for ingestion. Enforced **while reading**, so a missing or false `Content-Length` does not help. Counts bytes (Thai = 3 bytes). `413 PAYLOAD_TOO_LARGE`. Applied to **all** routes that read a body (also the anonymous login route).
+- **Depth:** 20 levels, checked without recursion. `400 INPUT_TOO_DEEP`. A 30,000-level body does not crash.
+- **Strings:** every text field in both routes has a maximum (names 120, notes 2000, reasons 500, phone 20, email 254, and so on). `targetAttendance` is capped at 1000 (an unbounded integer caused a database overflow, a `500`). `visitedOn` must be a date.
+- **Login:** username max 80, password max 200. Before this, a huge password cost a full hash on an anonymous route.
+- **Arrays:** the two routes take no arrays. Reports (300 attendance rows) and ingestion (500 groups, 20,000 members) kept their limits.
+- **Pagination:** these two routes have no list endpoint. Lists in `workspace` are scoped; notifications are limited to 40. A paginated workspace is **not built** (pilot size is about 100 users).
+- **Rate limit:** 30 writes per minute per user per route family (`429`). It is in memory of one server instance. On Vercel each instance counts alone, so it stops a runaway client, **not a distributed attack**. Use the Vercel Firewall for that (owner action).
+- **Errors:** invalid JSON, wrong types, unknown actions: always `400`, never `500`, no echo.
+- **Business logic:** unchanged. A valid create still returns `201`.
+- **Tests:** `gate9-input-limits.test.ts`, 22 tests, through the real route handlers with a real session.
+
+### D. Authorization matrix (priority 4)
+`tests/gate10-authz-matrix.test.ts`: **28 tests** through the real route handlers with real sessions for nine demo roles (group leader ×3, body leader, supervisor, pastor, admin, super admin, no role). They cover:
+- **Read:** reports (own group, other group, other body, no role, pastor), report lists, workspace (leader, body leader, no role, admin), growth (cross-body, pastor, no role), CSV exports, LINE registration list, ingestion, cares, field points.
+- **Write:** save draft, review, approve, unblock, self-approval; create member, register visitor, convert visitor, update follow-up (cross-group, cross-body, pastor, no role); organization (create group, assign role, self-promotion, cross-body transfer, `body_leader` and `other_authorized` grants, account status, revoke); `generate_brief`; ingestion; cares; notifications.
+- **Integrity:** CSRF missing on five write routes; foreign `Origin`.
+- **Result: no authorization defect found.** Five first-run differences were test mistakes (field names; empty scoped lists instead of `403`; a scope check before an authority check). The tests now assert the real, safe behavior.
+- Together with the 33 unauthenticated-route tests, the 14 legacy-route tests and the earlier LINE and growth tests, every listed route has unauthenticated, no-scope, cross-group, cross-body and role-escalation evidence. **Cross-care:** care routes return empty lists to unscoped users (tested); care steward scope is covered by `phase3b1` and `gate1` tests.
+- The menu hiding in the app is **not** used as a control: every test calls the server.
+- **Still open from earlier:** the 6 owner decisions on authorization (see round 3).
+
+### E. LINE integration readiness (priority 5)
+Full report: `FAITHMAP_LINE_MINIAPP_READINESS.md`. Summary:
+- SDK `@line/liff` 2.32.0 (latest). No secret is needed for the ID-token flow. Audience = Channel ID `2012616582`. LIFF ID `2012616582-tsDHY0DR` matches the channel.
+- **New:** `npm run check:line-config` (prints pass/fail only), `isAcceptableEndpointUrl` (refuses LINE default and LIFF URLs, `http`, fragments, credentials), replay-retry loop guard, `engines.node = 22.x`, `.env.example` notes.
+- Official docs: each internal channel has its **own** Channel ID and LIFF ID, so Preview/Developing and Published need different values.
+- `developers.line.biz` is **blocked** from this session. I used search excerpts only. Two points are **not verified**: who may open a Developing MINI App, and whether `localhost` works as an endpoint.
+- **Vercel (read-only):** project `faithmap` exists; previews of this branch build and are READY; **no environment variables**; SSO protection **on**; no database. So a real LINE login **cannot work yet**.
+- **High finding V-A:** an old deployment with target `production`, built from the **first** commit (before the security fixes), exists. It is hidden by Vercel Authentication only. See owner actions.
+- Default Endpoint URL must **not** be used as a FaithMap endpoint (enforced by the checker). Candidate endpoint: the branch alias `/mini` (see the readiness document).
+
+### F. Real device test readiness (priority 6)
+`FAITHMAP_REAL_DEVICE_TEST_PLAN.md`: 18 cases for iPhone Safari, iPhone LINE, Android LINE. **Status: BLOCKED.** No device test was run. The 84 + 52 browser checks are desktop Chromium with the mock and do not count.
+
+### G. Remaining blockers and risks
+| ID | Level | Item |
+|---|---|---|
+| V-A | **High while reachable** | Old production deployment from the first commit. Protected only by Vercel Authentication. Do not disable that protection until it is removed. |
+| E-1…E-4 | Blocker | Neon database, Vercel variables, protection decision, Endpoint URL (owner). |
+| B-1 (Gate 0) | Blocker | Vercel Hobby written eligibility. |
+| B-2 (Gate 0) | Blocker | Scheduler decision. |
+| R-1 | Medium | In-memory rate limit does not stop a distributed attack. |
+| R-2 | Medium | Older test files still run on PGlite only (CI runs the real-PostgreSQL file). |
+| R-3 | Low | `auth_challenges` cleanup missing (G2-4). |
+| R-4 | Low | GitHub Actions Node 20 runtime deprecation warning. |
+| R-5 | Info | 4 moderate dev-tool advisories (B-6). |
+
+### H. Owner actions (new)
+1. **Decide on V-A:** remove the old production deployment (dashboard) or tell me to prepare a clean one. Keep Vercel Authentication on meanwhile.
+2. Create the Neon project and `development` branch (free). Run `db:migrate` and `db:bootstrap-admin` yourself.
+3. Set Vercel Preview variables: `AUTH_SESSION_PEPPER`, `CRON_SECRET` (sensitive, 32+ random characters), `APP_BASE_URL`, `LINE_LOGIN_CHANNEL_ID=2012616582`, `NEXT_PUBLIC_LIFF_ID=2012616582-tsDHY0DR`, `DATABASE_URL` (pooled). Never paste values in chat.
+4. **Decide E-3:** turn Vercel Authentication off for Preview, or provide another way for the LINE browser to open the page.
+5. Set the Endpoint URL in the LINE console to the FaithMap `/mini` URL (not the default URL).
+6. Check in the console who can open the Developing app and whether `localhost` is accepted. Tell me the answers.
+7. Get 2 or 3 church test LINE accounts and phones, then run the device plan.
+8. Optional: add Vercel Firewall rate-limit rules on `/api/v1/auth` and `/api/v1/line`.
+
+### I. Commits of round 5
+`daadbb4` PII and secret fixes · zod upgrade commit · `77b8ff8` input limits · `d22f604` authorization matrix · `773dfb5` LINE config tools · `c7a135a` LINE and device documents · this status update (hash below).
 
 ---
 
@@ -312,12 +400,12 @@ See `FAITHMAP_ACCOUNT_ACCESS_CHECKLIST.md`. New items from this round:
 - **Neon Free:** 100 CU-hours and 0.5–1 GB per project (sources disagree). The app uses a pool of up to 5. Single-use token and challenge tables grow; add cleanup (G2-4).
 - **Vercel Hobby:** 5,000 scheduled runs per period; sign-in and report traffic well below the 1,000,000 function-call limit for a pilot. No measurement exists yet.
 - **LINE OA Free:** 300 messages per month (secondary sources). No message is sent by this work. A quota guard is still to build (Gate 5).
-- **GitHub Free:** 2,000 Actions minutes (private repository; B-8 still open). One CI workflow now exists. Each run is about 3–5 minutes (estimate, not measured). It runs on every push to `main` and `claude/**` and on pull requests.
+- **GitHub Free:** 2,000 Actions minutes (private repository; B-8 still open). One CI workflow exists. **Measured:** each job takes about 3 minutes, and each push runs it twice (push and pull request), so about 6 minutes per push. It runs on every push to `main` and `claude/**` and on pull requests.
 - **New dependencies:** both free (`@simplewebauthn/server` MIT; `@line/liff` under the LINE Developers Agreement, no fee found).
 
 ## Next executable tasks (no owner input needed)
 
 1. Run all older test files on real PostgreSQL (needs a test-runtime switch).
-2. Add input limits to the `organization` and `pastoral` routes and scan logs for PII (G2-6).
-3. Add challenge cleanup (G2-4).
-4. Watch the first GitHub Actions run and fix any difference from local.
+2. Add challenge cleanup (G2-4).
+3. Update the workflow actions to Node 24 ready versions after checking the current majors.
+4. Evaluate a newer `drizzle-kit` for the 4 moderate advisories.
