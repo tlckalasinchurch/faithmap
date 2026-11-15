@@ -7,6 +7,7 @@ import { ensureSeeded, SEED_IDS } from '@/server/db/seed';
 import { buildActorContext } from '@/server/modules/identity/service';
 import {
   listDecisionHistory,
+  rollbackImportBatch,
   promoteStagingBatch,
   resolveDataQualityIssue,
   stageImportBatch,
@@ -182,6 +183,64 @@ describe('Immutable data-quality decisions (owner decision 3)', () => {
           decidedByUserId: SEED_IDS.users.admin,
         })
       ).rejects.toThrow();
+    });
+  });
+});
+
+describe('Rollback with a reused member (owner priority 2)', () => {
+  it('keeps a verified member that a later batch reused, and removes only unverified growth rows of the rolled-back batch', async () => {
+    await withDb(async (rt) => {
+      const admin = await actorFor(rt, SEED_IDS.users.admin);
+      const mk = (tag: string) => ({
+        sourceArchiveName: `${tag}.xlsx`,
+        groups: [{ groupRef: `G-${tag}`, groupNameFromSheet: `กลุ่ม ${tag}`, careCode: `C-${tag}`, sourceFile: `${tag}.xlsx`, sourceSheet: tag }],
+        members: [
+          { memberRowRef: 'M-REUSE-1', groupRef: `G-${tag}`, sourceFile: `${tag}.xlsx`, sourceSheet: tag, sourceRow: 5, fullNameRaw: 'สมใจ ใช้ซ้ำ', nicknameRaw: 'ใจ', discipleshipGoalRaw: `เป้าหมาย ${tag}`, targetTimeframeRaw: 'สิ้นปี', disciplerNameRaw: 'พี่เลี้ยง' },
+        ],
+      });
+      const b1 = await stageImportBatch(rt.db, admin, mk('RE1'));
+      await promoteStagingBatch(rt.db, admin, b1.batch.id);
+      await rt.db.update(schema.members).set({ verificationStatus: 'verified' }).where(eq(schema.members.memberCode, 'M-REUSE-1'));
+      const b2 = await stageImportBatch(rt.db, admin, mk('RE2'));
+      await promoteStagingBatch(rt.db, admin, b2.batch.id);
+      // The reused member waits for a person (duplicate_existing_member), then the person approves.
+      const [reuseIssue] = await rt.db.select().from(schema.dataQualityIssues).where(eq(schema.dataQualityIssues.batchId, b2.batch.id));
+      expect(reuseIssue!.issueCode).toBe('duplicate_existing_member');
+      await resolveDataQualityIssue(rt.db, admin, { issueId: reuseIssue!.id, decision: 'approved_fix', resolutionNote: 'คนเดียวกัน ย้ายกลุ่ม' });
+      await promoteStagingBatch(rt.db, admin, b2.batch.id);
+
+      const growthBefore = await rt.db.select().from(schema.memberGrowthRecords);
+      const fromB1 = growthBefore.filter((g) => g.sourceBatchId === b1.batch.id);
+      expect(fromB1).toHaveLength(1);
+
+      expect(growthBefore.filter((g) => g.sourceBatchId === b2.batch.id)).toHaveLength(1);
+      await rollbackImportBatch(rt.db, admin, b2.batch.id, 'นำเข้าผิดไฟล์');
+
+      const [member] = await rt.db.select().from(schema.members).where(eq(schema.members.memberCode, 'M-REUSE-1'));
+      expect(member!.verificationStatus).toBe('verified');
+      expect(member!.sourceBatchId).toBe(b1.batch.id);
+      const growthAfter = await rt.db.select().from(schema.memberGrowthRecords);
+      expect(growthAfter.filter((g) => g.sourceBatchId === b1.batch.id)).toHaveLength(1);
+      expect(growthAfter.filter((g) => g.sourceBatchId === b2.batch.id)).toHaveLength(0);
+    });
+  });
+});
+
+describe('Rollback protects reviewed growth records', () => {
+  it('archives instead of deleting when a growth record of the batch was verified by a person', async () => {
+    await withDb(async (rt) => {
+      const admin = await actorFor(rt, SEED_IDS.users.admin);
+      const staged = await stageImportBatch(rt.db, admin, {
+        sourceArchiveName: 'GV1.xlsx',
+        groups: [{ groupRef: 'G-GV1', groupNameFromSheet: 'กลุ่ม GV1', careCode: 'C-GV1', sourceFile: 'GV1.xlsx', sourceSheet: 'GV1' }],
+        members: [{ memberRowRef: 'M-GV1-1', groupRef: 'G-GV1', sourceFile: 'GV1.xlsx', sourceSheet: 'GV1', sourceRow: 5, fullNameRaw: 'สมปอง เติบโต', nicknameRaw: 'ปอง', discipleshipGoalRaw: 'อ่านพระคัมภีร์', targetTimeframeRaw: 'สิ้นปี', disciplerNameRaw: 'พี่เลี้ยง' }],
+      });
+      await promoteStagingBatch(rt.db, admin, staged.batch.id);
+      await rt.db.update(schema.memberGrowthRecords).set({ verificationStatus: 'VERIFIED' }).where(eq(schema.memberGrowthRecords.sourceBatchId, staged.batch.id));
+      const result = await rollbackImportBatch(rt.db, admin, staged.batch.id, 'ทดสอบ');
+      expect(result.archivedInsteadOfDeleted).toBe(true);
+      expect(await rt.db.select().from(schema.memberGrowthRecords).where(eq(schema.memberGrowthRecords.sourceBatchId, staged.batch.id))).toHaveLength(1);
+      expect(await rt.db.select().from(schema.members).where(eq(schema.members.memberCode, 'M-GV1-1'))).toHaveLength(1);
     });
   });
 });

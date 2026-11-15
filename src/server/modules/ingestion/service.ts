@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
@@ -1482,10 +1482,19 @@ async function findRollbackProtection(
     const chunk = ids.slice(i, i + 5000);
     const [att, growth, accounts, stewards] = await Promise.all([
       tdb.select({ id: attendanceRecords.memberId }).from(attendanceRecords).where(inArray(attendanceRecords.memberId, chunk)),
+      // Growth rows from other batches, plus rows of this batch that a person already reviewed.
       tdb
         .select({ id: memberGrowthRecords.memberId })
         .from(memberGrowthRecords)
-        .where(and(inArray(memberGrowthRecords.memberId, chunk), ne(memberGrowthRecords.sourceBatchId, batchId))),
+        .where(
+          and(
+            inArray(memberGrowthRecords.memberId, chunk),
+            or(
+              ne(memberGrowthRecords.sourceBatchId, batchId),
+              notInArray(memberGrowthRecords.verificationStatus, ['RAW', 'INCOMPLETE'])
+            )
+          )
+        ),
       tdb.select({ id: users.memberId }).from(users).where(inArray(users.memberId, chunk)),
       tdb.select({ id: assignments.stewardMemberId }).from(assignments).where(inArray(assignments.stewardMemberId, chunk)),
     ]);
@@ -1559,6 +1568,16 @@ export async function rollbackImportBatch(
         .set({ status: 'archived', updatedAt: new Date() })
         .where(eq(houseMissionGroups.sourceBatchId, batchId));
     } else if (promotedGroupIds.length > 0) {
+      // Growth rows this batch added to members of EARLIER batches (a person approved the match).
+      // Remove only rows nobody reviewed. A reviewed row is human work and stays.
+      await tdb
+        .delete(memberGrowthRecords)
+        .where(
+          and(
+            eq(memberGrowthRecords.sourceBatchId, batchId),
+            inArray(memberGrowthRecords.verificationStatus, ['RAW', 'INCOMPLETE'])
+          )
+        );
       await tdb.delete(members).where(eq(members.sourceBatchId, batchId));
       await tdb.delete(houseMissionGroups).where(eq(houseMissionGroups.sourceBatchId, batchId));
     }
