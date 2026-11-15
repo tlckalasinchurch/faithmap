@@ -9,10 +9,10 @@
 | Gate | Status | Reason |
 |---|---|---|
 | 0 Infrastructure readiness | **NEEDS OWNER APPROVAL** | B-1 (Vercel Hobby reply) and B-2 (scheduler) are open. No Vercel project, Neon project or LINE channel exists. |
-| 1 Phase 3B verification | **NEEDS OWNER APPROVAL** | Review of all Phase 3B services is done. 8 defects fixed. 3 policy decisions are open (see Gate 1). |
-| 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. The older routes are now reviewed and 10 defects are fixed. PII-in-logs and input-validation review remain. |
+| 1 Phase 3B verification | **READY FOR OWNER REVIEW. Item 2 BLOCKED** | 8 + 2 defects fixed. Your 3 decisions are applied (see "Round 4"). Growth columns Y–AD stay unmapped: the source workbook is not available. |
+| 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. Older routes reviewed (10 defects fixed). Every protected route has a 401 test. PII-in-logs scan and input limits on `organization` and `pastoral` remain. |
 | 3 LINE identity and authentication | **BLOCKED** | Server side is built and checked against official docs. Real LINE cannot be tested without a channel. |
-| 4 LINE MINI App | **IN PROGRESS** | Core screens are built and browser-tested with the mock. The weekly report form is not built. |
+| 4 LINE MINI App | **IN PROGRESS** | Screens and the weekly report form are built and browser-tested with the mock and local demo data. No real LINE, no real phone. |
 | 5 LINE OA messaging | NOT STARTED | |
 | 6 Scheduler | NOT STARTED | Needs B-2. |
 | 7 End-to-end QA | NOT STARTED | |
@@ -29,17 +29,26 @@ No gate is PASSED. Gate 0 has critical blockers.
 | `010ef84` | Migration history, passkeys, session and TLS hardening, LIFF-compatible LINE verification | yes |
 | `484fdb1` | Phase 3B review fixes (rollback, member merge, roles, validation) | yes |
 | `4e60ae7` | Gate 4 MINI App, growth API, status report | yes |
+| `a7d3b76` | Authorization review of the older routes (10 defects) | yes |
+| `0f4ad39` | Duplicate rule (all rows pending_review); immutable data-quality decisions | local |
+| `d2c0b2c` | Rollback removes only unreviewed growth rows; protects reviewed ones | local |
+| `ab84604` | MINI App weekly report form | local |
+| `c20b235` | GitHub Actions CI; 401 tests for every protected route | local |
+| `946301c` | Growth columns Y–AD no longer guessed by letter | local |
 
 ## Exact test results (commands run on 2026-11-15)
 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
-| `npx vitest run` | **19 files passed, 1 skipped; 117 tests passed, 14 skipped** (skipped = the real-PostgreSQL file, which needs a database URL) |
-| `FAITHMAP_TEST_DATABASE_URL=postgres://…@127.0.0.1:5432/faithmap_test_a npx vitest run tests/real-postgres.test.ts` | **1 file passed; 14 tests passed** on local PostgreSQL 16.15 |
+| `npx vitest run` | **22 files passed, 1 skipped; 178 tests passed, 15 skipped** (skipped = the real-PostgreSQL file, which needs a database URL) |
+| `FAITHMAP_TEST_DATABASE_URL=postgres://…@127.0.0.1:5432/faithmap_test_a npx vitest run tests/real-postgres.test.ts` | **1 file passed; 15 tests passed** on local PostgreSQL 16.15 (adds the concurrent-decision race) |
 | `npx next build` | exit 0. Routes include `/mini`, `/api/v1/line`, `/api/v1/passkeys`, `/api/v1/growth` |
 | `npx next build` with `NEXT_PUBLIC_FAITHMAP_MOCK_LIFF=true` | exit 0. `grep` finds no mock token or mock label in `.next` (mock is not shipped) |
 | `npm ci --dry-run` | succeeds (lock file repaired) |
+| `node scripts/e2e-mini-report.mjs` (Chromium, dev server, mock LIFF, demo data, fresh `.data`) | **52 of 52 checks passed** (report form at 360, 768, 1280 px, plus the draft, submit, revision, supervisor and approval flows) |
+| `node scripts/e2e-mini.mjs` (re-run after the Reports screen change) | **84 of 84 checks passed** |
+| `.github/workflows/ci.yml` | YAML parses. **Not run on GitHub yet** (it runs when you push this branch with Actions enabled). The same commands pass locally. |
 | `node scripts/e2e-mini.mjs` (Chromium, dev server, mock LIFF, demo mode) | **84 of 84 checks passed** at 360, 768 and 1280 px |
 | `npx impeccable detect src/components/mini` | exit 0. Regex-only mode. It states its findings are an undercount. |
 | `npx impeccable detect http://localhost:3100/mini` | exit 0, no output |
@@ -78,16 +87,15 @@ Facts and the scheduler comparison are in `FAITHMAP_INFRASTRUCTURE_AUDIT.md` (Z-
 | I-1 | Medium | Import preview was open to any signed-in user and had no size limit. | Admin only. Limits: 500 groups, 20,000 members, 2,000 characters per text, 20 KB per `rawCells`. |
 | — | Low | Unique-key races (same file staged twice, same care code, same group code on promotion) returned raw database errors. | Clear 409 or idempotent result. Real-PostgreSQL race tests pass. |
 
-### Open owner decisions (not changed, because they change business rules)
+### Owner decisions on Gate 1 (answered in round 4, now applied)
 
-1. **Cross-group duplicate names:** only the first row of a duplicate bucket is held for review. The other rows are promoted as separate members. No merge happens. Do you want all rows held until a human decides?
-2. **Growth column letters:** when explicit fields are absent, the importer reads spreadsheet columns `Y`–`AD` as growth fields. I cannot check this against the source sheet. Please confirm the mapping.
-3. **Issue re-decision:** a data-quality issue can be decided again and the earlier decision is overwritten (the audit log keeps history). Should a decided issue be locked?
+1. **Cross-group duplicates:** done. See Round 4, item A.
+2. **Growth columns Y–AD:** **BLOCKED.** No source workbook exists on this machine. The importer no longer guesses by letter. See Round 4, item B.
+3. **Issue re-decision:** done as immutable decisions. See Round 4, item C.
 
 ### Not verified
 Performance of staging (one insert per row, so slow on a remote database for thousands of rows). `ilike` search treats `%` and `_` typed by the user as wildcards (no injection; parameterized).
 
-**Next executable task:** run the older test files on real PostgreSQL (needs a test-runtime switch).
 
 ---
 
@@ -158,9 +166,62 @@ An existing test (`workflow-and-constraints`) created the brief in mid-week. Tha
 | G2-3 | Medium | A locked username blocks the real user for 15 minutes (accepted trade-off; your call). |
 | G2-4 | Medium | `auth_challenges` rows are never cleaned up. `used_id_tokens` is cleaned when a new token is saved. Add a scheduled cleanup (Gate 6). |
 | G2-5 | Medium | No session revocation on password change (no password-change feature exists yet). |
-| G2-6 | Medium | Logs and error text were not scanned for PII. Also not done: a review of input limits on `organization` and `pastoral` routes. |
+| G2-6 | Medium | Logs and error text were not scanned for PII. Also not done: a review of input limits on `organization` and `pastoral` routes. (Report and ingestion routes have limits.) |
 | G2-7 | Medium | `ensureSeeded` and demo accounts still exist for local use. The default password `FaithMap2026!` is public in the source. They never run in production. |
 | G2-8 | Low | Older inline-DDL databases (local `.data`) cannot be upgraded. Delete `.data` and start again. No other database exists. |
+
+---
+
+## Round 4 — data integrity, immutable decisions, MINI report form, CI
+
+### A. Duplicate review rule (owner decision 1) — done
+- **Defect found:** only the first row of a cross-group duplicate set went to `pending_review`. The other rows stayed promotable, so the second person of a duplicate pair was created automatically.
+- **Fix:** every row of the candidate set is `pending_review` and has its own issue. No row is promoted or merged by itself. A person decides each row.
+- Two existing tests encoded the old behavior. I changed them to the new rule (`phase2-ingestion-and-flex`, `phase3b2-4-promotion-safeguards`).
+
+### B. Growth columns Y–AD (owner decision 2) — BLOCKED
+- Search for `*.xlsx`, `*.xls`, `*.xlsm` on this machine: **none found.** The mapping cannot be inspected.
+- **Defect found:** the importer read column letters `Y` to `AD` as growth fields when no field name was given. That is an unverified guess.
+- **Fix:** letter fallbacks removed. Growth fields come only from explicit fields or named headers. Raw cells stay stored in provenance. Test: a row with only `Y`–`AD` cells creates no growth record and keeps the raw cells.
+- **Owner action:** send the original workbook (without personal data, or with names removed) and the header row of the growth sheet, through a channel you control.
+
+### C. Immutable data-quality decisions (owner decision 3) — done
+- New table `data_quality_decisions` (migrations `0002`, `0003`). Fields: issue, decision type (`approved_fix`, `rejected`, `resolved`, `deferred`, `reversed`), `supersedes_decision_id`, reason (not blank), actor, timestamp.
+- **Append-only:** a database trigger blocks `UPDATE` and `DELETE`. Another trigger rejects a decision that supersedes a decision of a different issue.
+- **Concurrency:** two partial unique indexes allow one first decision per issue and one successor per decision. A second concurrent decision fails with `409 DECISION_CONFLICT`. An optional `expectedDecisionId` gives `409 DECISION_STALE` for an old screen.
+- **Reversal:** a `reversed` decision re-opens the issue and puts the staging row back to `pending_review`. Reversal with nothing to reverse gives `409 NOTHING_TO_REVERSE`.
+- **Lock:** after the row becomes a member, a new decision gives `409 DECISION_LOCKED`.
+- **Access:** same rule as before (admin; Body Leader only for groups in their Body). Reading the history uses the same rule.
+- The `dq_issues` row keeps a projection of the latest decision for lists. The decision table is the record. Each decision also writes a security audit row.
+- **Tests:** `tests/gate5-dq-decisions.test.ts` (chain, reversal, stale, reason, lock, scope, trigger with raw SQL, cross-issue chain) and a **real PostgreSQL race test**: two decisions at once leave one winner (twice).
+
+### D. Rollback protection (priority 2) — 2 defects fixed
+- A growth row added by a later batch to a member from an earlier batch stayed after rollback with no group. Rollback now removes the unreviewed (`RAW`, `INCOMPLETE`) growth rows of the rolled-back batch. Reviewed rows stay.
+- A growth row of the batch that a person had already verified was deleted with its member. It now counts as history, so the batch is archived instead of deleted.
+- Verified: promotion never updates an existing member. A reused member needs a person's approval first (`duplicate_existing_member`).
+
+### E. MINI App weekly report form (priority 4) — built
+- Files: `src/components/mini/MiniReport.tsx`, `src/lib/mini-report.ts`. It uses the existing `/api/v1/reports` contract. No server rule was copied or weakened.
+- **Leader:** edit and send a new, draft or returned report. Draft save never sends it (CD-01). Submit needs two taps. Every member must be marked (present, absent, excused) before submit. Nobody is pre-marked. Member counts come from the marks.
+- **Supervisor:** forward to the Body Leader, or send back with a reason. **Body Leader:** approve or send back. Approve is hidden before the supervisor reviews (DEC-04) and for the person who submitted (DEC-05). Approved is read-only. No automatic approval exists (CD-08).
+- The screen hides actions by role. The server still enforces every rule.
+- **Tests:** `tests/gate6-mini-report.test.ts` (16 tests: rules per role and status, validation, payload accepted by the real API schema). Browser: 52 of 52 checks (see test table). It uses the demo seed states: approved, draft, returned, submitted with and without a supervisor.
+- **Not tested:** real LINE, real phone, concurrent edits from two phones in a browser (the server version check is tested in the service and on real PostgreSQL).
+- **Not built:** offline draft, adding a visitor from the report screen.
+
+### F. Route authorization sweep (priority 1) — done for the listed modules
+- `tests/gate7-unauthenticated-routes.test.ts`: 33 tests. Every protected route and method returns 401 with no cookie and with a made-up cookie, and the body leaks no stack or SQL text.
+- Public by design and not in that list: login, LINE challenge and login, passkey login, health, internal jobs (CRON_SECRET).
+- The cross-group, no-scope and unauthorized-mutation tests are in `gate2-legacy-routes-authz`, `gate1-phase3b-review` and `gate4-mini-app` from earlier rounds.
+
+### G. CI (priority 5) — written, not yet run on GitHub
+- `.github/workflows/ci.yml`: `npm ci`, typecheck, `npm test`, `npm run build`. A PostgreSQL 16 service container runs the real-PostgreSQL tests with a throwaway password written in the workflow. No repository secret is used. Permissions: `contents: read`.
+- **Risk:** the first GitHub run can differ from local (for example the schema reset inside the real-PostgreSQL test file). I will fix any difference after the first run.
+
+### Remaining risks after round 4
+- **No critical defect is known and open** in the code I reviewed. This is not a pass: PII-in-logs, input limits on two routes, older tests on real PostgreSQL, real LINE and real devices are not checked.
+- Gate 0 blockers (B-1, B-2, no Vercel, Neon or LINE resources) still block any deploy.
+- The 6 authorization decisions and the Gate 1 growth mapping are still with the owner.
 
 ---
 
@@ -182,7 +243,7 @@ Built at `/mini`:
 - **Browser results:** 84/84 checks at 360/768/1280 px: no horizontal scroll, every tap target ≥ 48 px, every text ≥ 16 px, visible focus, mock sign-in refused by the server, password sign-in reaches each screen. The status badge font was 14 px and was raised to 16 px for the whole app.
 - `@line/liff` 2.32.0 added. It is governed by the **LINE Developers Agreement**. I could not read that agreement (host not allowed). I found no fee. **Owner: read the agreement.**
 
-**Not built:** the weekly report form (3-step) in the MINI App. The Reports screen shows status and links people to the web form. Member-only home content, Thai word-break tuning, and offline draft support are not built. **Not tested:** the real LIFF SDK, the LINE in-app browser, real phones.
+**Weekly report form:** built in round 4 (see Round 4, item D). **Not built:** member-only home content, Thai word-break tuning, offline draft support. **Not tested:** the real LIFF SDK, the LINE in-app browser, real phones.
 
 ## Gates 5–8
 Not started. Reminder for Gate 5: do **not** set `LINE_OA_CHANNEL_ACCESS_TOKEN` before the quota guard exists.
@@ -251,12 +312,12 @@ See `FAITHMAP_ACCOUNT_ACCESS_CHECKLIST.md`. New items from this round:
 - **Neon Free:** 100 CU-hours and 0.5–1 GB per project (sources disagree). The app uses a pool of up to 5. Single-use token and challenge tables grow; add cleanup (G2-4).
 - **Vercel Hobby:** 5,000 scheduled runs per period; sign-in and report traffic well below the 1,000,000 function-call limit for a pilot. No measurement exists yet.
 - **LINE OA Free:** 300 messages per month (secondary sources). No message is sent by this work. A quota guard is still to build (Gate 5).
-- **GitHub Free:** 2,000 Actions minutes. No workflow exists yet.
+- **GitHub Free:** 2,000 Actions minutes (private repository; B-8 still open). One CI workflow now exists. Each run is about 3–5 minutes (estimate, not measured). It runs on every push to `main` and `claude/**` and on pull requests.
 - **New dependencies:** both free (`@simplewebauthn/server` MIT; `@line/liff` under the LINE Developers Agreement, no fee found).
 
 ## Next executable tasks (no owner input needed)
 
-1. Run all test files on real PostgreSQL.
+1. Run all older test files on real PostgreSQL (needs a test-runtime switch).
 2. Add input limits to the `organization` and `pastoral` routes and scan logs for PII (G2-6).
-3. Build the MINI App weekly report form.
-4. Add challenge cleanup and a CI workflow file (manual migration job, no secrets in the repository).
+3. Add challenge cleanup (G2-4).
+4. Watch the first GitHub Actions run and fix any difference from local.
