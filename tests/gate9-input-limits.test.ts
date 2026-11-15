@@ -83,23 +83,17 @@ describe('mutation rate limit', () => {
 
 // ---------- Route-level: real handlers, real session, scratch database ----------
 import { afterAll, beforeAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { setupRouteTestDb, type RouteTestDbHandle } from './helpers/route-test-db';
 import { orgActionSchema } from '@/app/api/v1/organization/schema';
 import { pastoralActionSchema } from '@/app/api/v1/pastoral/schema';
 
 const U = '00000000-0000-4000-8000-0000000000aa';
-const saved: Record<string, string | undefined> = {};
-let dir = '';
+let dbHandle: RouteTestDbHandle;
 let cookie = '';
 let csrf = '';
 
 beforeAll(async () => {
-  dir = mkdtempSync(path.join(tmpdir(), 'faithmap-limits-'));
-  for (const k of ['DATABASE_URL', 'FAITHMAP_DEMO_MODE']) saved[k] = process.env[k];
-  process.env.DATABASE_URL = `pglite://${dir}`;
-  process.env.FAITHMAP_DEMO_MODE = 'true';
+  dbHandle = await setupRouteTestDb('faithmap-limits-', { demoMode: true });
   const { getReadyDb } = await import('@/server/db/bootstrap');
   const { loginWithPassword } = await import('@/server/modules/identity/service');
   const db = await getReadyDb();
@@ -107,12 +101,8 @@ beforeAll(async () => {
   cookie = `faithmap_session=${login.sessionToken}; faithmap_csrf=${login.csrfToken}`;
   csrf = login.csrfToken;
 }, 120000);
-afterAll(() => {
-  for (const [k, v] of Object.entries(saved)) {
-    if (v === undefined) delete process.env[k];
-    else process.env[k] = v;
-  }
-  rmSync(dir, { recursive: true, force: true });
+afterAll(async () => {
+  await dbHandle?.cleanup();
 });
 
 function authed(name: string, body: unknown, raw?: string) {
@@ -245,5 +235,20 @@ describe('login input limits (anonymous route)', () => {
     expect(Date.now() - t0).toBeLessThan(2000);
     const r2 = await mod.POST(mk(JSON.stringify({ action: 'login_password', username: 'a', password: 'p'.repeat(200_000) })));
     expect(r2.status).toBe(413);
+  });
+
+  it('refuses oversized passkey response.id with 400', async () => {
+    const mod = await import('@/app/api/v1/passkeys/route');
+    const req = new NextRequest('http://localhost:3000/api/v1/passkeys', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'login_verify',
+        challengeId: U,
+        response: { id: 'x'.repeat(600), response: {} },
+      }),
+    });
+    const res = await mod.POST(req);
+    expect(res.status).toBe(400);
   });
 });

@@ -128,25 +128,21 @@ describe('Challenge and used-token cleanup', () => {
 
 // ---------- The scheduled job route ----------
 import { afterAll, beforeAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { NextRequest } from 'next/server';
+import { setupRouteTestDb, type RouteTestDbHandle } from './helpers/route-test-db';
 
 describe('cleanup_auth_data job route', () => {
-  const saved: Record<string, string | undefined> = {};
-  let dir = '';
+  let dbHandle: RouteTestDbHandle;
   const SECRET = 'test-cron-secret-0123456789-0123456789-abcdef';
-  beforeAll(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'faithmap-cleanup-'));
-    for (const k of ['DATABASE_URL', 'FAITHMAP_DEMO_MODE', 'CRON_SECRET']) saved[k] = process.env[k];
-    process.env.DATABASE_URL = `pglite://${dir}`;
-    process.env.FAITHMAP_DEMO_MODE = 'true';
+  beforeAll(async () => {
+    dbHandle = await setupRouteTestDb('faithmap-cleanup-', {
+      demoMode: true,
+      extraEnvKeys: ['CRON_SECRET'],
+    });
     process.env.CRON_SECRET = SECRET;
-  });
-  afterAll(() => {
-    for (const [k, v] of Object.entries(saved)) (v === undefined ? delete process.env[k] : (process.env[k] = v));
-    rmSync(dir, { recursive: true, force: true });
+  }, 120000);
+  afterAll(async () => {
+    await dbHandle?.cleanup();
   });
 
   async function run(authorization?: string) {
@@ -170,5 +166,18 @@ describe('cleanup_auth_data job route', () => {
     expect(r.status).toBe(200);
     expect(r.json.result).toEqual({ challengesDeleted: expect.any(Number), usedTokensDeleted: expect.any(Number), more: expect.any(Boolean) });
     expect(JSON.stringify(r.json)).not.toMatch(/hash|nonce|token_hash/i);
+  }, 60000);
+
+  it('rejects non-UUID periodId on generate_meeting_brief without leaking internals', async () => {
+    const mod = await import('@/app/api/internal/jobs/[jobName]/route');
+    const req = new NextRequest('http://localhost:3000/api/internal/jobs/generate_meeting_brief', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${SECRET}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ periodId: 'not-a-uuid' }),
+    });
+    const res = await mod.POST(req, { params: Promise.resolve({ jobName: 'generate_meeting_brief' }) });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
   }, 60000);
 });

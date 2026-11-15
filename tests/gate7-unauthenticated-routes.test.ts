@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { NextRequest } from 'next/server';
+import { setupRouteTestDb, type RouteTestDbHandle } from './helpers/route-test-db';
 
 /**
  * Black-box check: every protected route answers 401 when no session cookie is sent.
@@ -24,20 +22,12 @@ const PROTECTED: Array<[string, string[]]> = [
   ['passkeys', ['GET']],
 ];
 
-let dir = '';
-const saved: Record<string, string | undefined> = {};
-beforeAll(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'faithmap-unauth-'));
-  for (const k of ['DATABASE_URL', 'FAITHMAP_DEMO_MODE']) saved[k] = process.env[k];
-  process.env.DATABASE_URL = `pglite://${dir}`;
-  process.env.FAITHMAP_DEMO_MODE = 'false';
-});
-afterAll(() => {
-  for (const [k, v] of Object.entries(saved)) {
-    if (v === undefined) delete process.env[k];
-    else process.env[k] = v;
-  }
-  rmSync(dir, { recursive: true, force: true });
+let dbHandle: RouteTestDbHandle;
+beforeAll(async () => {
+  dbHandle = await setupRouteTestDb('faithmap-unauth-', { demoMode: false, seedIfPostgres: false });
+}, 120000);
+afterAll(async () => {
+  await dbHandle?.cleanup();
 });
 
 function request(method: string, name: string, headers: Record<string, string> = {}) {

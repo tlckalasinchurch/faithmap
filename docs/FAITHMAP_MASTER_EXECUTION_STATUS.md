@@ -1,6 +1,6 @@
 # FaithMap — Master Execution Status
 
-**Updated:** 2026-11-15 (round 3: authorization review) · **Branch:** `claude/vigilant-noether-4fn1g1` · **`main` is unchanged (`e38a24e`).**
+**Updated:** 2026-11-15 (round 7: PostgreSQL 16 test switch, Node 24 CI prep, cleanup/session audit, input limits) · **Branch:** `claude/vigilant-noether-4fn1g1` · **`main` is unchanged (`e38a24e`).**
 **Budget:** 0 THB/month. No paid service was used, created or enabled.
 **Push / merge / deploy:** the feature branch was pushed after the tests above passed (round-2 Git rules). `main` was not touched. No pull request was opened. Nothing was deployed.
 
@@ -169,6 +169,45 @@ An existing test (`workflow-and-constraints`) created the brief in mid-week. Tha
 | G2-6 | Medium | Logs and error text were not scanned for PII. Also not done: a review of input limits on `organization` and `pastoral` routes. (Report and ingestion routes have limits.) |
 | G2-7 | Medium | `ensureSeeded` and demo accounts still exist for local use. The default password `FaithMap2026!` is public in the source. They never run in production. |
 | G2-8 | Low | Older inline-DDL databases (local `.data`) cannot be upgraded. Delete `.data` and start again. No other database exists. |
+
+---
+
+## Round 7 — PostgreSQL 16 suite switch, Node 24 CI prep, cleanup/session audit, remaining input limits, LINE readiness
+
+### 1. Existing tests on real PostgreSQL 16
+- **Local environment:** Docker and `psql` are not installed on this Windows machine. Local `npm test` ran `27 passed | 1 skipped (28)` (`263 passed | 16 skipped (279)`), with `real-postgres.test.ts` skipped locally.
+- **Test-runtime switch built:** `src/server/db/client.ts` (`createInMemoryTestRuntime`, `resetDbRuntimeForTests`) and `tests/helpers/route-test-db.ts` (`setupRouteTestDb` used by `gate7`, `gate9`, `gate10`, `gate12`) now switch cleanly to real PostgreSQL 16 when `FAITHMAP_TEST_ALL_POSTGRES=1` and `FAITHMAP_TEST_DATABASE_URL` targets a `faithmap_test` database.
+- **CI status:** `.github/workflows/ci.yml` was updated locally to add `Tests (all suites on real PostgreSQL 16)` (`npx vitest run --fileParallelism=false --exclude tests/real-postgres.test.ts`), **but could not be pushed** because the current GitHub OAuth token lacks `workflow` scope (`refusing to allow an OAuth App to create or update workflow .github/workflows/ci.yml without workflow scope`). Owner action: run `gh auth refresh -s workflow` and push `.github/workflows/ci.yml`.
+
+### 2. GitHub Actions Node 24 upgrade & CI verification
+- **Verified on GitHub (`118c16d`):** push run `43680326756` (2m29s, **success**) and PR run `43680440041` (2m21s, **success**). Both reported the Node 20 deprecation annotation on `actions/checkout@v4` and `actions/setup-node@v4`.
+- **Prepared locally in `.github/workflows/ci.yml`:** upgraded `actions/checkout@v4` -> `actions/checkout@v7` and `actions/setup-node@v4` -> `actions/setup-node@v7` (keeping `node-version: 22` to match `engines.node = "22.x"`). Blocked from pushing until `workflow` scope is granted.
+
+### 3. Cleanup system verification (`purgeExpiredAuthData`)
+- Audited `src/server/modules/line-identity/cleanup.ts`, `src/server/modules/line-identity/service.ts`, `src/server/modules/identity/passkeys.ts`, and `src/app/api/internal/jobs/[jobName]/route.ts`.
+- Verified: `CHALLENGE_RETENTION_MS` (1 hour past `expiresAt`) does not interfere with the 1-minute per-IP challenge rate limit or active 5-minute LINE/passkey challenges; `USED_TOKEN_RETENTION_MS` (10 minutes past `expiresAt`) preserves replay protection across clock skew; batching is bounded (`PURGE_DEFAULT_LIMIT = 1000`, max `10,000`); `expires_at` indexes exist on both tables; `cleanup_auth_data` is protected by `CRON_SECRET` and returns counts only; `auth_sessions`, `security_audit_logs`, `users`, `user_passkeys`, `external_identities`, `line_registration_requests`, and all pastoral/reporting/ingestion tables are untouched.
+
+### 4. Session expiration audit & Retention Policy proposal (no sessions deleted)
+- **Verified in code (`src/server/modules/identity/service.ts`, `src/server/http/session.ts`):**
+  - Absolute lifetime: 7 days (`SESSION_ABSOLUTE_MS`, matching cookie `maxAge`); idle timeout: 72 hours (`SESSION_IDLE_MS`, sets `revokedAt` on next request); `lastSeenAt` updates throttled to 5 minutes (`SESSION_TOUCH_INTERVAL_MS`); max 10 live sessions per user (`MAX_SESSIONS_PER_USER`, oldest revoked via `revokedAt`).
+  - `auth_sessions` currently has indexes on `id`, `token_hash`, and `user_id` (no index on `expires_at` or `revoked_at`), and `security_audit_logs.target_id` is plain text with no foreign key to `auth_sessions` (deleting expired sessions will not cascade or break audit logs).
+  - **No sessions were deleted.**
+- **Retention Policy proposal (awaiting owner approval before implementation):**
+  - **Option A (Recommended — 30-day post-expiry/revocation retention):** Purge `auth_sessions` rows where `(revoked_at IS NOT NULL AND revoked_at < now - 30 days)` OR `(expires_at < now - 30 days)` in bounded batches (e.g., 1,000 rows/call) via an internal cleanup job, after adding an index on `expires_at` / `revoked_at`. Preserves 30 days of IP/User-Agent forensic context while bounding Neon Free storage and PII retention.
+  - **Option B (Minimal — 7-day post-expiry/revocation retention):** Same bounded purge with a 7-day grace window to minimize IP/User-Agent PII retention.
+  - **Option C (Keep indefinitely for pilot):** No deletion during the ~100-user pilot, or scrub `ip_address`/`user_agent` after 30 days while keeping session rows.
+
+### 5. Remaining PII logs & API input limits
+- Audited all 15 API routes under `src/app/api/**`.
+- **Fixes applied:**
+  1. `src/app/api/internal/jobs/[jobName]/route.ts`: wrapped `POST` with `handleRouteError(err)` so unexpected errors use `describeErrorForLog` and return safe Thai 500 JSON (no raw SQL/error leak), and validated optional `periodId` on `generate_meeting_brief` with `z.string().uuid()`.
+  2. `src/app/api/v1/passkeys/route.ts`: bounded `webauthnResponse.id` with `.max(512)`.
+- **Regression tests added:** `tests/gate12-challenge-cleanup.test.ts` (invalid `periodId` -> `400 VALIDATION_ERROR`) and `tests/gate9-input-limits.test.ts` (oversized passkey `response.id` -> `400`).
+- **Local verification:** `npm run typecheck` (exit 0) and `npx vitest run tests/gate7-unauthenticated-routes.test.ts tests/gate9-input-limits.test.ts tests/gate10-authz-matrix.test.ts tests/gate12-challenge-cleanup.test.ts` (**4 files, 94 tests passed**).
+
+### 6. LINE MINI App readiness (Developing channel `2012616582`)
+- Ran `npm run check:line-config` with `LINE_LOGIN_CHANNEL_ID=2012616582`, `NEXT_PUBLIC_LIFF_ID=2012616582-tsDHY0DR`, and the Vercel preview `/mini` URL: **6/6 PASS** (`channel_id_set`, `liff_id_set`, `channel_id_format`, `liff_id_format`, `liff_matches_channel`, `oa_token_unset_until_quota_guard`).
+- Developing Channel test steps remain ready in `docs/FAITHMAP_LINE_MINIAPP_READINESS.md` and `docs/FAITHMAP_REAL_DEVICE_TEST_PLAN.md`, still awaiting owner blockers E-1 through E-4 (Neon DB, Vercel Preview env vars, Preview protection decision, and setting Endpoint URL in the LINE console).
 
 ---
 

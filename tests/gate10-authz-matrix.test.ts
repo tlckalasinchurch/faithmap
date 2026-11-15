@@ -4,17 +4,14 @@
  * It is not a LINE test and not a production test.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { NextRequest } from 'next/server';
 import { resetRateLimitsForTests } from '@/server/http/rate-limit';
 import { SEED_IDS } from '@/server/db/seed';
+import { setupRouteTestDb, type RouteTestDbHandle } from './helpers/route-test-db';
 
 const G = SEED_IDS.groups;
 const B = SEED_IDS.bodies;
-const saved: Record<string, string | undefined> = {};
-let dir = '';
+let dbHandle: RouteTestDbHandle;
 const sessions = new Map<string, { cookie: string; csrf: string }>();
 let periodId = '';
 
@@ -53,16 +50,12 @@ const get = (route: string, o: Opts = {}) => call(route, 'GET', o);
 const post = (route: string, o: Opts = {}) => call(route, 'POST', o);
 
 beforeAll(async () => {
-  dir = mkdtempSync(path.join(tmpdir(), 'faithmap-matrix-'));
-  for (const k of ['DATABASE_URL', 'FAITHMAP_DEMO_MODE']) saved[k] = process.env[k];
-  process.env.DATABASE_URL = `pglite://${dir}`;
-  process.env.FAITHMAP_DEMO_MODE = 'true';
+  dbHandle = await setupRouteTestDb('faithmap-matrix-', { demoMode: true });
   const ws = await get('workspace', { user: 'somchai_body_n' });
   periodId = ws.json.overview.selectedPeriod.id;
 }, 180000);
-afterAll(() => {
-  for (const [k, v] of Object.entries(saved)) (v === undefined ? delete process.env[k] : (process.env[k] = v));
-  rmSync(dir, { recursive: true, force: true });
+afterAll(async () => {
+  await dbHandle?.cleanup();
 });
 beforeEach(() => resetRateLimitsForTests());
 

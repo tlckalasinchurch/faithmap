@@ -97,7 +97,40 @@ export function getDbRuntime(): DbRuntime {
   return globalForDb.__faithmapRuntime;
 }
 
+export async function resetDbRuntimeForTests(): Promise<void> {
+  const rt = globalForDb.__faithmapRuntime;
+  globalForDb.__faithmapRuntime = undefined;
+  globalForDb.__faithmapReadyPromise = undefined;
+  if (rt) {
+    await rt.close().catch(() => undefined);
+  }
+}
+
 export async function createInMemoryTestRuntime(): Promise<DbRuntime> {
+  const testPgUrl = process.env.FAITHMAP_TEST_DATABASE_URL;
+  if (
+    process.env.FAITHMAP_TEST_ALL_POSTGRES === '1' &&
+    testPgUrl &&
+    testPgUrl.includes('faithmap_test') &&
+    isRemotePostgresUrl(testPgUrl)
+  ) {
+    const pool = new Pool(buildPoolConfig(testPgUrl));
+    await pool.query(
+      'DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;'
+    );
+    const db = drizzlePg(pool, { schema }) as unknown as FaithMapDb;
+    return {
+      db,
+      driver: 'postgres',
+      execRaw: async (sqlText: string) => {
+        await pool.query(sqlText);
+      },
+      close: async () => {
+        await pool.end();
+      },
+    };
+  }
+
   const client = new PGlite();
   const db = drizzlePglite(client, { schema });
   return {
