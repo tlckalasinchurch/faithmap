@@ -5,10 +5,14 @@ import { pastoralActionSchema } from './schema';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
 import {
+  addExistingMemberToGroup,
   convertVisitorToMember,
-  createGroupMember,
+  endGroupMembership,
+  createGroupMemberWithWarnings,
+  recordVisitorReturn,
   registerVisitor,
   updateFollowUpItem,
+  updateVisitorFollowupStatus,
 } from '@/server/modules/pastoral-care/service';
 
 export const dynamic = 'force-dynamic';
@@ -27,8 +31,17 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
     if (data.action === 'create_member') {
-      const member = await createGroupMember(db, actor, data);
-      return NextResponse.json({ ok: true, member }, { status: 201 });
+      // FR-04.3: a possible duplicate is a warning, not a block. The warning holds counts only.
+      const { member, duplicateWarnings } = await createGroupMemberWithWarnings(db, actor, data);
+      return NextResponse.json({ ok: true, member, duplicateWarnings }, { status: 201 });
+    }
+    if (data.action === 'add_member_to_group') {
+      const membership = await addExistingMemberToGroup(db, actor, data);
+      return NextResponse.json({ ok: true, membership }, { status: 201 });
+    }
+    if (data.action === 'end_membership') {
+      const membership = await endGroupMembership(db, actor, data);
+      return NextResponse.json({ ok: true, membership });
     }
     if (data.action === 'register_visitor') {
       const res = await registerVisitor(db, actor, data);
@@ -39,7 +52,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, member });
     }
 
-    const followUp = await updateFollowUpItem(db, actor, data.followUpId, data.status, data.notes);
+    if (data.action === 'record_visitor_return') {
+      const res = await recordVisitorReturn(db, actor, data);
+      return NextResponse.json({ ok: true, ...res }, { status: 201 });
+    }
+    if (data.action === 'update_visitor_status') {
+      const visitor = await updateVisitorFollowupStatus(db, actor, data.visitorId, data.status);
+      return NextResponse.json({ ok: true, visitor });
+    }
+
+    const followUp = await updateFollowUpItem(db, actor, data.followUpId, data.status, data.notes, data.outcomeNote);
     return NextResponse.json({ ok: true, followUp });
   } catch (err) {
     return handleRouteError(err);

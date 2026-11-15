@@ -30,6 +30,17 @@ export const pastoralActionSchema = z.discriminatedUnion('action', [
     followUpTitle: optText(200),
   }),
   z.object({
+    action: z.literal('add_member_to_group'),
+    groupId: z.string().uuid(),
+    memberId: z.string().uuid(),
+    membershipRole: text(40).optional(),
+  }),
+  z.object({
+    action: z.literal('end_membership'),
+    groupId: z.string().uuid(),
+    memberId: z.string().uuid(),
+  }),
+  z.object({
     action: z.literal('convert_visitor'),
     visitorId: z.string().uuid(),
     targetGroupId: z.string().uuid().optional(),
@@ -39,5 +50,19 @@ export const pastoralActionSchema = z.discriminatedUnion('action', [
     followUpId: z.string().uuid(),
     status: z.enum(['open', 'in_progress', 'completed', 'cancelled']),
     notes: optText(2000),
+    outcomeNote: optText(2000),
+  }),
+  z.object({
+    action: z.literal('record_visitor_return'),
+    visitorId: z.string().uuid(),
+    groupId: z.string().uuid().optional(),
+    visitedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    weeklyReportId: z.string().uuid().nullable().optional(),
+    notes: optText(2000),
+  }),
+  z.object({
+    action: z.literal('update_visitor_status'),
+    visitorId: z.string().uuid(),
+    status: z.enum(['awaiting_followup', 'contacted', 'returned', 'ongoing_care', 'completed']),
   }),
 ]);

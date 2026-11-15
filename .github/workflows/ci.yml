@@ -52,3 +52,5 @@ jobs:
         run: npx vitest run --fileParallelism=false --exclude tests/real-postgres.test.ts
       - name: Build
         run: npm run build
+      - name: Browser files hold no field point phone numbers or names (DEC-06, DEC-17)
+        run: npm run check:bundle

@@ -106,7 +106,7 @@ export function ApprovalQueueTab({
             key={f.id}
             type="button"
             onClick={() => setStatusFilter(f.id)}
-            className={`min-h-[44px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-sm font-extrabold ${
+            className={`min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-base font-extrabold ${
               statusFilter === f.id
                 ? 'bg-[var(--fm-ink)] text-[var(--fm-lime)]'
                 : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
@@ -145,7 +145,7 @@ export function ApprovalQueueTab({
                     <h2 className="font-display text-2xl font-extrabold text-[#141413]">
                       {report.groupName}
                     </h2>
-                    <span className="rounded-lg border-2 border-[#141413] bg-[#E2E8F0] px-2.5 py-0.5 text-sm font-bold text-[#141413]">
+                    <span className="rounded-lg border-2 border-[#141413] bg-[#E2E8F0] px-2.5 py-0.5 text-base font-bold text-[#141413]">
                       {report.bodyName}
                     </span>
                   </div>
@@ -158,7 +158,7 @@ export function ApprovalQueueTab({
                   </div>
                 </div>
 
-                <div className="text-sm sm:text-right">
+                <div className="text-base sm:text-right">
                   {report.requiresSupervisorReview ? (
                     <span className="fm-sticker bg-[#F0F4F8] text-[#141413]">
                       เส้นทาง: ผู้นำกลุ่ม → ผู้ตรวจทาน (แคร์/ประสานงาน) → หัวหน้าบอดี้
@@ -182,25 +182,25 @@ export function ApprovalQueueTab({
                 <div className="mt-4 space-y-3">
                   <div className="tabular-nums grid grid-cols-2 divide-x-2 divide-[#141413] rounded-xl border-2 border-[#141413] bg-[#F0F4F8] text-base sm:grid-cols-4">
                     <div className="p-3">
-                      <div className="text-xs font-bold text-[#27272A]">สถานะประชุม</div>
+                      <div className="text-base font-bold text-[#27272A]">สถานะประชุม</div>
                       <div className="mt-0.5 font-extrabold text-[#141413]">
                         {report.meetingHeld ? 'จัดประชุม' : 'งดประชุม'}
                       </div>
                     </div>
                     <div className="p-3">
-                      <div className="text-xs font-bold text-[#27272A]">ผู้เข้าร่วมรวม</div>
+                      <div className="text-base font-bold text-[#27272A]">ผู้เข้าร่วมรวม</div>
                       <div className="mt-0.5 font-mono font-extrabold text-[#141413]">
                         {report.totalAttendees} คน
                       </div>
                     </div>
                     <div className="p-3">
-                      <div className="text-xs font-bold text-[#27272A]">ผู้เยี่ยมใหม่</div>
+                      <div className="text-base font-bold text-[#27272A]">ผู้เยี่ยมใหม่</div>
                       <div className="mt-0.5 font-mono font-extrabold text-[#1D4ED8]">
                         {report.newVisitorsCount} คน
                       </div>
                     </div>
                     <div className="p-3">
-                      <div className="text-xs font-bold text-[#27272A]">ผู้ส่งรายงาน</div>
+                      <div className="text-base font-bold text-[#27272A]">ผู้ส่งรายงาน</div>
                       <div className="mt-0.5 font-bold text-[#141413]">
                         {report.submittedByName ?? '-'}
                       </div>
@@ -255,7 +255,7 @@ export function ApprovalQueueTab({
                     }`}
                   />
                   {reasonErrorId === report.id && (
-                    <p className="text-sm font-extrabold text-[var(--fm-coral)]">
+                    <p className="text-base font-extrabold text-[var(--fm-coral)]">
                       กรุณาระบุเหตุผลในการส่งกลับขอแก้ไขก่อนกดปุ่มนี้
                     </p>
                   )}
@@ -316,7 +316,7 @@ export function ApprovalQueueTab({
                     {canApproveRole && (
                       <>
                         {isSelfSubmitter ? (
-                          <span className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-[#141413] bg-[#FFE4E6] px-4 text-sm font-extrabold text-[#881337]">
+                          <span className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-[#141413] bg-[#FFE4E6] px-4 text-base font-extrabold text-[#881337]">
                             ผู้ส่งรายงานไม่สามารถอนุมัติรายงานของตนเองได้
                           </span>
                         ) : (

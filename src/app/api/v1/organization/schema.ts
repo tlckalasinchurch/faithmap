@@ -6,6 +6,20 @@ const optText = (max: number) => text(max).nullable().optional();
 
 export const orgActionSchema = z.discriminatedUnion('action', [
   z.object({
+    action: z.literal('create_body'),
+    code: z.string().trim().min(2).max(40),
+    nameTh: z.string().trim().min(2).max(120),
+    nameEn: optText(120),
+    province: optText(80),
+  }),
+  z.object({
+    action: z.literal('update_body'),
+    bodyId: z.string().uuid(),
+    nameTh: z.string().trim().min(2).max(120).optional(),
+    nameEn: optText(120),
+    status: z.enum(['active', 'inactive', 'archived']).optional(),
+  }),
+  z.object({
     action: z.literal('create_group'),
     groupCode: z.string().trim().min(2).max(40),
     bodyId: z.string().uuid().nullable().optional(),

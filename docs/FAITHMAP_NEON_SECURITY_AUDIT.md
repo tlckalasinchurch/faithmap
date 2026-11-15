@@ -1,5 +1,8 @@
 # FaithMap — Neon Security Audit (Phase A.3)
 
+> **Note (2026-11-15).** This audit counts 4 migrations. The repository now has 6 (0000 to 0005). Role, privilege and catalog findings stay valid. The expected table, index and constraint counts changed; see `FAITHMAP_MIGRATION_EXECUTION_PLAN.md` addendum 2.
+
+
 Date: 2026-11-15
 Scope: Neon project `faithmap` (`icy-violet-42450826`), region `aws-ap-southeast-1`.
 Mode: read-only. No role, branch, pooler, password, migration or Vercel setting changed.

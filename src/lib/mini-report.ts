@@ -71,7 +71,18 @@ export interface ReportForm {
   summaryNotes: string;
   prayerRequests: string;
   careNeedsNotes: string;
-  attendance: Record<string, 'present' | 'absent' | 'excused'>;
+  // FR-07.2 content
+  teachingTopic: string;
+  scriptureRef: string;
+  actPrayer: boolean;
+  actFellowship: boolean;
+  actOther: string;
+  locationText: string;
+  atmosphereNotes: string;
+  followupNeedsText: string;
+  nextWeekPlan: string;
+  supportNeededText: string;
+  attendance: Record<string, 'present' | 'absent' | 'leave' | 'online'>;
 }
 
 export const REPORT_TEXT_MAX = 4000;
@@ -99,6 +110,10 @@ export function validateReportForm(f: ReportForm): string[] {
     ['สรุปการประชุม', f.summaryNotes],
     ['เรื่องขอบคุณและอธิษฐาน', f.prayerRequests],
     ['เรื่องที่ต้องดูแล', f.careNeedsNotes],
+    ['บรรยากาศ', f.atmosphereNotes],
+    ['ความต้องการติดตาม', f.followupNeedsText],
+    ['แผนสัปดาห์หน้า', f.nextWeekPlan],
+    ['สิ่งที่ต้องการให้ช่วย', f.supportNeededText],
   ] as const) {
     if (v.length > REPORT_TEXT_MAX) errors.push(`${label}ยาวเกิน ${REPORT_TEXT_MAX} ตัวอักษร`);
   }
@@ -111,7 +126,7 @@ export function validateReportForm(f: ReportForm): string[] {
  */
 export function buildReportPayload(f: ReportForm, expectedVersion?: number) {
   const marks = Object.entries(f.attendance);
-  const memberAttendees = marks.filter(([, s]) => s === 'present').length;
+  const memberAttendees = marks.filter(([, s]) => s === 'present' || s === 'online').length;
   const newVisitorsCount = toCount(f.newVisitorsCount);
   const returningVisitorsCount = toCount(f.returningVisitorsCount);
   const childrenCount = toCount(f.childrenCount);
@@ -128,6 +143,14 @@ export function buildReportPayload(f: ReportForm, expectedVersion?: number) {
     summaryNotes: f.summaryNotes,
     prayerRequests: f.prayerRequests,
     careNeedsNotes: f.careNeedsNotes,
+    teachingTopic: f.teachingTopic,
+    scriptureRef: f.scriptureRef,
+    activities: { prayer: f.actPrayer, fellowship: f.actFellowship, other: f.actOther },
+    locationText: f.locationText,
+    atmosphereNotes: f.atmosphereNotes,
+    followupNeedsText: f.followupNeedsText,
+    nextWeekPlan: f.nextWeekPlan,
+    supportNeededText: f.supportNeededText,
     attendance: marks.map(([memberId, attendanceStatus]) => ({ memberId, attendanceStatus })),
     ...(expectedVersion !== undefined ? { expectedVersion } : {}),
   };

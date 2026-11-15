@@ -87,8 +87,21 @@ export function WeeklyReportTab({
   const [summaryNotes, setSummaryNotes] = useState('');
   const [prayerRequests, setPrayerRequests] = useState('');
   const [careNeedsNotes, setCareNeedsNotes] = useState('');
+  // FR-07.2 content fields
+  const [content, setContent] = useState({
+    teachingTopic: '',
+    scriptureRef: '',
+    actPrayer: false,
+    actFellowship: false,
+    actOther: '',
+    locationText: '',
+    atmosphereNotes: '',
+    followupNeedsText: '',
+    nextWeekPlan: '',
+    supportNeededText: '',
+  });
   const [attendanceMap, setAttendanceMap] = useState<
-    Record<string, 'present' | 'absent' | 'excused'>
+    Record<string, 'present' | 'absent' | 'leave' | 'online'>
   >({});
 
   const [reportStatus, setReportStatus] = useState<string>('not_submitted');
@@ -151,6 +164,14 @@ export function WeeklyReportTab({
             summaryNotes: string | null;
             prayerRequests: string | null;
             careNeedsNotes: string | null;
+            teachingTopic: string | null;
+            scriptureRef: string | null;
+            activities: { prayer?: boolean; fellowship?: boolean; other?: string | null } | null;
+            locationText: string | null;
+            atmosphereNotes: string | null;
+            followupNeedsText: string | null;
+            nextWeekPlan: string | null;
+            supportNeededText: string | null;
             revisionReason: string | null;
             isBlocked: boolean;
             blockedReason: string | null;
@@ -158,7 +179,7 @@ export function WeeklyReportTab({
           };
           attendanceRecords: Array<{
             memberId: string;
-            attendanceStatus: 'present' | 'absent' | 'excused';
+            attendanceStatus: 'present' | 'absent' | 'leave' | 'online';
           }>;
         } | null;
       }>(`/api/v1/reports?periodId=${period.id}&groupId=${selectedGroupId}`);
@@ -185,8 +206,20 @@ export function WeeklyReportTab({
         setSummaryNotes(r.summaryNotes ?? '');
         setPrayerRequests(r.prayerRequests ?? '');
         setCareNeedsNotes(r.careNeedsNotes ?? '');
+        setContent({
+          teachingTopic: r.teachingTopic ?? '',
+          scriptureRef: r.scriptureRef ?? '',
+          actPrayer: Boolean(r.activities?.prayer),
+          actFellowship: Boolean(r.activities?.fellowship),
+          actOther: r.activities?.other ?? '',
+          locationText: r.locationText ?? '',
+          atmosphereNotes: r.atmosphereNotes ?? '',
+          followupNeedsText: r.followupNeedsText ?? '',
+          nextWeekPlan: r.nextWeekPlan ?? '',
+          supportNeededText: r.supportNeededText ?? '',
+        });
 
-        const map: Record<string, 'present' | 'absent' | 'excused'> = {};
+        const map: Record<string, 'present' | 'absent' | 'leave' | 'online'> = {};
         for (const m of groupMembers) map[m.id] = 'present';
         for (const rec of detail.attendanceRecords) map[rec.memberId] = rec.attendanceStatus;
         setAttendanceMap(map);
@@ -208,7 +241,7 @@ export function WeeklyReportTab({
         setSummaryNotes('');
         setPrayerRequests('');
         setCareNeedsNotes('');
-        const map: Record<string, 'present' | 'absent' | 'excused'> = {};
+        const map: Record<string, 'present' | 'absent' | 'leave' | 'online'> = {};
         for (const m of groupMembers) map[m.id] = 'present';
         setAttendanceMap(map);
       }
@@ -245,6 +278,14 @@ export function WeeklyReportTab({
       summaryNotes,
       prayerRequests,
       careNeedsNotes,
+      teachingTopic: content.teachingTopic,
+      scriptureRef: content.scriptureRef,
+      activities: { prayer: content.actPrayer, fellowship: content.actFellowship, other: content.actOther },
+      locationText: content.locationText,
+      atmosphereNotes: content.atmosphereNotes,
+      followupNeedsText: content.followupNeedsText,
+      nextWeekPlan: content.nextWeekPlan,
+      supportNeededText: content.supportNeededText,
       attendance: Object.entries(attendanceMap).map(([memberId, attendanceStatus]) => ({
         memberId,
         attendanceStatus,
@@ -255,11 +296,11 @@ export function WeeklyReportTab({
 
   function handleToggleAttendance(
     memberId: string,
-    status: 'present' | 'absent' | 'excused'
+    status: 'present' | 'absent' | 'leave' | 'online'
   ) {
     const next = { ...attendanceMap, [memberId]: status };
     setAttendanceMap(next);
-    const presentCount = Object.values(next).filter((s) => s === 'present').length;
+    const presentCount = Object.values(next).filter((s) => s === 'present' || s === 'online').length;
     setMemberAttendees(presentCount);
     setTotalAttendees(
       presentCount +
@@ -514,7 +555,7 @@ export function WeeklyReportTab({
               <div className="text-base font-extrabold">
                 รายงานนี้ติดปัญหาส่งต่อ ({blockedReason})
               </div>
-              <p className="mt-1 text-sm font-bold">
+              <p className="mt-1 text-base font-bold">
                 ระบบแจ้งเตือนผู้ดูแลระบบเพื่อมอบหมายหัวหน้าบอดี้ที่ใช้งานได้แล้ว
               </p>
             </div>
@@ -656,7 +697,7 @@ export function WeeklyReportTab({
                   ลงทะเบียนผู้เยี่ยมใหม่ในกลุ่ม
                 </h3>
                 {visitorError && (
-                  <div className="rounded-lg border-2 border-[#141413] bg-[#FFE4E6] p-3 text-sm font-bold text-[#881337]">
+                  <div className="rounded-lg border-2 border-[#141413] bg-[#FFE4E6] p-3 text-base font-bold text-[#881337]">
                     {visitorError}
                   </div>
                 )}
@@ -695,7 +736,7 @@ export function WeeklyReportTab({
                     ผู้เยี่ยมยินยอมให้เก็บเบอร์โทรเพื่อติดต่อเยี่ยมเยียน
                   </span>
                 </label>
-                <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base font-bold text-[#141413]">
+                <label className="flex min-h-[48px] cursor-pointer items-center gap-3 text-base font-bold text-[#141413]">
                   <input
                     type="checkbox"
                     checked={visitorFollowUp}
@@ -728,8 +769,8 @@ export function WeeklyReportTab({
                         <div className="text-lg font-extrabold text-[#141413]">
                           {m.fullName}
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(['present', 'absent', 'excused'] as const).map((opt) => (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {(['present', 'absent', 'leave', 'online'] as const).map((opt) => (
                             <button
                               key={opt}
                               type="button"
@@ -745,7 +786,7 @@ export function WeeklyReportTab({
                                   : 'bg-[#F0F4F8] text-[#27272A]'
                               }`}
                             >
-                              {opt === 'present' ? 'มา' : opt === 'absent' ? 'ขาด' : 'ลา'}
+                              {opt === 'present' ? 'มา' : opt === 'absent' ? 'ขาด' : opt === 'leave' ? 'ลา' : 'ออนไลน์'}
                             </button>
                           ))}
                         </div>
@@ -762,7 +803,7 @@ export function WeeklyReportTab({
                       className={`flex items-center justify-between gap-3 rounded-xl border-2 border-[#141413] p-4 ${item.tone}`}
                     >
                       <div>
-                        <label className="block text-sm font-extrabold text-[#141413]">
+                        <label className="block text-base font-extrabold text-[#141413]">
                           {item.label}
                         </label>
                         <input
@@ -805,7 +846,7 @@ export function WeeklyReportTab({
                   <div className="rounded-xl border-2 border-[#141413] bg-[var(--fm-paper)] p-4">
                     <label
                       htmlFor="fm-children-count"
-                      className="block text-sm font-extrabold text-[#141413]"
+                      className="block text-base font-extrabold text-[#141413]"
                     >
                       จำนวนเด็กที่เข้าร่วม (คน)
                     </label>
@@ -822,7 +863,7 @@ export function WeeklyReportTab({
                   <div className="rounded-xl border-2 border-[#141413] bg-[var(--fm-paper)] p-4">
                     <label
                       htmlFor="fm-offering-thb"
-                      className="block text-sm font-extrabold text-[#141413]"
+                      className="block text-base font-extrabold text-[#141413]"
                     >
                       ยอดถวายทรัพย์ประจำสัปดาห์ (บาท)
                     </label>
@@ -876,6 +917,61 @@ export function WeeklyReportTab({
             ขั้นตอนที่ 3: บันทึกคำอธิษฐาน การอภิบาล และกดส่งรายงาน
           </h2>
 
+          {meetingHeld && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {(
+                [
+                  ['teachingTopic', 'หัวข้อที่สอนหรือแบ่งปัน', 300],
+                  ['scriptureRef', 'พระคัมภีร์ที่ใช้ (ถ้ามี)', 200],
+                  ['locationText', 'สถานที่ประชุม', 500],
+                ] as const
+              ).map(([key, label, max]) => (
+                <label key={key} className="flex flex-col gap-1 text-lg font-bold text-[#141413]">
+                  {label}
+                  <input
+                    className="fm-input w-full min-w-0 min-h-[48px] text-lg"
+                    maxLength={max}
+                    disabled={!canEditSelected || isLocked}
+                    value={content[key]}
+                    onChange={(e) => setContent((c) => ({ ...c, [key]: e.target.value }))}
+                  />
+                </label>
+              ))}
+              <fieldset className="space-y-2" disabled={!canEditSelected || isLocked}>
+                <legend className="text-lg font-bold text-[#141413]">กิจกรรมที่ทำ</legend>
+                <label className="flex min-h-[48px] items-center gap-3 text-lg font-bold">
+                  <input type="checkbox" className="h-6 w-6" checked={content.actPrayer} onChange={(e) => setContent((c) => ({ ...c, actPrayer: e.target.checked }))} />
+                  อธิษฐานร่วมกัน
+                </label>
+                <label className="flex min-h-[48px] items-center gap-3 text-lg font-bold">
+                  <input type="checkbox" className="h-6 w-6" checked={content.actFellowship} onChange={(e) => setContent((c) => ({ ...c, actFellowship: e.target.checked }))} />
+                  สามัคคีธรรมและรับประทานอาหารร่วมกัน
+                </label>
+                <input className="fm-input w-full min-w-0 min-h-[48px] text-lg" maxLength={300} placeholder="กิจกรรมอื่น ๆ (ถ้ามี)" aria-label="กิจกรรมอื่น ๆ" value={content.actOther} onChange={(e) => setContent((c) => ({ ...c, actOther: e.target.value }))} />
+              </fieldset>
+              {(
+                [
+                  ['atmosphereNotes', 'บรรยากาศการประชุม'],
+                  ['followupNeedsText', 'เรื่องที่ต้องการติดตามต่อ'],
+                  ['nextWeekPlan', 'แผนสัปดาห์หน้า'],
+                  ['supportNeededText', 'สิ่งที่ต้องการให้ช่วย'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="flex flex-col gap-1 text-lg font-bold text-[#141413]">
+                  {label}
+                  <textarea
+                    rows={3}
+                    className="fm-input w-full min-w-0 text-lg"
+                    maxLength={2000}
+                    disabled={!canEditSelected || isLocked}
+                    value={content[key]}
+                    onChange={(e) => setContent((c) => ({ ...c, [key]: e.target.value }))}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="mb-1.5 block text-base font-extrabold text-[#141413]">
               สรุปบรรยากาศและการแบ่งปันในกลุ่ม
@@ -889,7 +985,7 @@ export function WeeklyReportTab({
                     onClick={() =>
                       setSummaryNotes((prev) => (prev ? `${prev} · ${chip}` : chip))
                     }
-                    className="rounded-full border-2 border-[#141413] bg-[#E2E8F0] px-3 py-1 text-xs font-extrabold text-[#141413] transition hover:bg-[#C8FF00]"
+                    className="rounded-full border-2 border-[#141413] bg-[#E2E8F0] px-3 py-1 text-base font-extrabold text-[#141413] transition hover:bg-[#C8FF00]"
                   >
                     <Sparkles className="mr-1 inline h-3 w-3" aria-hidden="true" />
                     + {chip}
@@ -920,7 +1016,7 @@ export function WeeklyReportTab({
                     onClick={() =>
                       setPrayerRequests((prev) => (prev ? `${prev} · ${chip}` : chip))
                     }
-                    className="rounded-full border-2 border-[#141413] bg-[#DBEAFE] px-3 py-1 text-xs font-extrabold text-[#141413] transition hover:bg-[#C8FF00] hover:text-[#141413]"
+                    className="rounded-full border-2 border-[#141413] bg-[#DBEAFE] px-3 py-1 text-base font-extrabold text-[#141413] transition hover:bg-[#C8FF00] hover:text-[#141413]"
                   >
                     + {chip}
                   </button>

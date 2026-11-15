@@ -13,8 +13,8 @@ import {
 import { StatusBadge } from '@/components/StatusBadge';
 import { BigButton, Field, Loading, Notice, ScreenTitle } from './ui';
 
-type Mark = 'present' | 'absent' | 'excused';
-const MARK_TH: Record<Mark, string> = { present: 'มา', absent: 'ไม่มา', excused: 'ลา' };
+type Mark = 'present' | 'absent' | 'leave' | 'online';
+const MARK_TH: Record<Mark, string> = { present: 'มา', absent: 'ไม่มา', leave: 'ลา', online: 'ร่วมออนไลน์' };
 
 interface Detail {
   report: {
@@ -31,6 +31,14 @@ interface Detail {
     summaryNotes: string | null;
     prayerRequests: string | null;
     careNeedsNotes: string | null;
+    teachingTopic: string | null;
+    scriptureRef: string | null;
+    activities: { prayer?: boolean; fellowship?: boolean; other?: string | null } | null;
+    locationText: string | null;
+    atmosphereNotes: string | null;
+    followupNeedsText: string | null;
+    nextWeekPlan: string | null;
+    supportNeededText: string | null;
     revisionReason: string | null;
     isBlocked: boolean;
     blockedReason: string | null;
@@ -54,6 +62,16 @@ function emptyForm(weekStart: string): ReportForm {
     summaryNotes: '',
     prayerRequests: '',
     careNeedsNotes: '',
+    teachingTopic: '',
+    scriptureRef: '',
+    actPrayer: false,
+    actFellowship: false,
+    actOther: '',
+    locationText: '',
+    atmosphereNotes: '',
+    followupNeedsText: '',
+    nextWeekPlan: '',
+    supportNeededText: '',
     attendance: {},
   };
 }
@@ -160,6 +178,16 @@ function ReportEditor({
         next.summaryNotes = r.summaryNotes ?? '';
         next.prayerRequests = r.prayerRequests ?? '';
         next.careNeedsNotes = r.careNeedsNotes ?? '';
+        next.teachingTopic = r.teachingTopic ?? '';
+        next.scriptureRef = r.scriptureRef ?? '';
+        next.actPrayer = Boolean(r.activities?.prayer);
+        next.actFellowship = Boolean(r.activities?.fellowship);
+        next.actOther = r.activities?.other ?? '';
+        next.locationText = r.locationText ?? '';
+        next.atmosphereNotes = r.atmosphereNotes ?? '';
+        next.followupNeedsText = r.followupNeedsText ?? '';
+        next.nextWeekPlan = r.nextWeekPlan ?? '';
+        next.supportNeededText = r.supportNeededText ?? '';
         for (const rec of res.detail!.attendanceRecords) att[rec.memberId] = rec.attendanceStatus;
       } else {
         // A new report starts with nobody marked. The leader must mark each person on purpose.
@@ -376,7 +404,7 @@ function ReportEditor({
                       {groupMembers.map((m) => (
                         <li key={m.id} className="space-y-2 border-2 border-[#141413] bg-white p-3">
                           <p className="text-xl font-bold">{m.displayName}</p>
-                          <div className="grid grid-cols-3 gap-2" role="group" aria-label={`สถานะของ ${m.displayName}`}>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={`สถานะของ ${m.displayName}`}>
                             {(Object.keys(MARK_TH) as Mark[]).map((k) => (
                               <button
                                 key={k}
@@ -405,6 +433,39 @@ function ReportEditor({
                       disabled={disabled}
                       onChange={(e) => set('offeringAmountThb', e.target.value)}
                     />
+                  </Field>
+                  <Field label="หัวข้อที่สอนหรือแบ่งปัน">
+                    <input className="fm-input min-h-[56px] w-full text-lg" maxLength={300} value={form.teachingTopic} disabled={disabled} onChange={(e) => set('teachingTopic', e.target.value)} />
+                  </Field>
+                  <Field label="พระคัมภีร์ที่ใช้ (ถ้ามี)">
+                    <input className="fm-input min-h-[56px] w-full text-lg" maxLength={200} value={form.scriptureRef} disabled={disabled} onChange={(e) => set('scriptureRef', e.target.value)} />
+                  </Field>
+                  <fieldset className="space-y-2" disabled={disabled}>
+                    <legend className="text-xl font-bold">กิจกรรมที่ทำ</legend>
+                    <label className="flex min-h-[56px] items-center gap-3 text-lg font-bold">
+                      <input type="checkbox" className="h-12 w-12 shrink-0" checked={form.actPrayer} onChange={(e) => set('actPrayer', e.target.checked)} />
+                      อธิษฐานร่วมกัน
+                    </label>
+                    <label className="flex min-h-[56px] items-center gap-3 text-lg font-bold">
+                      <input type="checkbox" className="h-12 w-12 shrink-0" checked={form.actFellowship} onChange={(e) => set('actFellowship', e.target.checked)} />
+                      สามัคคีธรรมและรับประทานอาหารร่วมกัน
+                    </label>
+                    <input className="fm-input min-h-[56px] w-full text-lg" maxLength={300} placeholder="กิจกรรมอื่น ๆ (ถ้ามี)" aria-label="กิจกรรมอื่น ๆ" value={form.actOther} onChange={(e) => set('actOther', e.target.value)} />
+                  </fieldset>
+                  <Field label="สถานที่ประชุม">
+                    <input className="fm-input min-h-[56px] w-full text-lg" maxLength={500} value={form.locationText} disabled={disabled} onChange={(e) => set('locationText', e.target.value)} />
+                  </Field>
+                  <Field label="บรรยากาศการประชุม">
+                    <textarea className="fm-input min-h-[96px] w-full text-lg" maxLength={2000} value={form.atmosphereNotes} disabled={disabled} onChange={(e) => set('atmosphereNotes', e.target.value)} />
+                  </Field>
+                  <Field label="เรื่องที่ต้องการติดตามต่อ">
+                    <textarea className="fm-input min-h-[96px] w-full text-lg" maxLength={2000} value={form.followupNeedsText} disabled={disabled} onChange={(e) => set('followupNeedsText', e.target.value)} />
+                  </Field>
+                  <Field label="แผนสัปดาห์หน้า">
+                    <textarea className="fm-input min-h-[96px] w-full text-lg" maxLength={2000} value={form.nextWeekPlan} disabled={disabled} onChange={(e) => set('nextWeekPlan', e.target.value)} />
+                  </Field>
+                  <Field label="สิ่งที่ต้องการให้ช่วย">
+                    <textarea className="fm-input min-h-[96px] w-full text-lg" maxLength={2000} value={form.supportNeededText} disabled={disabled} onChange={(e) => set('supportNeededText', e.target.value)} />
                   </Field>
                   <Field label="สรุปการประชุม">
                     <textarea className="fm-input min-h-[120px] w-full text-lg" maxLength={4000} value={form.summaryNotes} disabled={disabled} onChange={(e) => set('summaryNotes', e.target.value)} />

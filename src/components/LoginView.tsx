@@ -163,7 +163,7 @@ export function LoginView({
                   className="fm-input w-full"
                   required
                 />
-                <p className="mt-2 text-sm font-medium text-[#27272A]">
+                <p className="mt-2 text-base font-medium text-[#27272A]">
                   รหัสผ่านเริ่มต้นสำหรับบัญชีนำร่อง:{' '}
                   <code className="rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono font-bold text-[#141413]">
                     FaithMap2026!
@@ -209,7 +209,7 @@ export function LoginView({
                       <div className="text-base font-extrabold text-[#141413]">
                         {acc.displayName}
                       </div>
-                      <div className="font-mono text-sm font-medium text-[#27272A]">
+                      <div className="font-mono text-base font-medium text-[#27272A]">
                         @{acc.username}
                       </div>
                     </div>

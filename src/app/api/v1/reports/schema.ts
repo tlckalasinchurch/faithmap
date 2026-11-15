@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const attendanceItemSchema = z.object({
   memberId: z.string().uuid(),
-  attendanceStatus: z.enum(['present', 'absent', 'excused']),
+  attendanceStatus: z.enum(['present', 'absent', 'leave', 'online']),
 });
 
 const reportPayloadSchema = z.object({
@@ -18,6 +18,17 @@ const reportPayloadSchema = z.object({
   summaryNotes: z.string().max(4000).nullable().optional(),
   prayerRequests: z.string().max(4000).nullable().optional(),
   careNeedsNotes: z.string().max(4000).nullable().optional(),
+  teachingTopic: z.string().max(300).nullable().optional(),
+  scriptureRef: z.string().max(200).nullable().optional(),
+  activities: z
+    .object({ prayer: z.boolean().optional(), fellowship: z.boolean().optional(), other: z.string().max(300).nullable().optional() })
+    .nullable()
+    .optional(),
+  locationText: z.string().max(500).nullable().optional(),
+  atmosphereNotes: z.string().max(2000).nullable().optional(),
+  followupNeedsText: z.string().max(2000).nullable().optional(),
+  nextWeekPlan: z.string().max(2000).nullable().optional(),
+  supportNeededText: z.string().max(2000).nullable().optional(),
   attendance: z.array(attendanceItemSchema).max(300).optional(),
   expectedVersion: z.number().int().positive().optional(),
 });

@@ -34,8 +34,32 @@ export function DashboardTab({
       ? Math.round((metrics.submittedReports / metrics.expectedReports) * 100)
       : 0;
 
+  // FR-02.4: active groups without an active Group Leader. The server already limits `groups` to the viewer's scope.
+  const leaderlessGroups = workspace.groups.filter(
+    (g) =>
+      g.status === 'active' &&
+      !g.assignments.some((a) => a.roleType === 'group_leader' && a.accountStatus === 'active')
+  );
+
   return (
     <div className="space-y-6">
+      {leaderlessGroups.length > 0 && (
+        <section className="fm-panel bg-[#FFF7D6] p-5 text-[#141413]" aria-live="polite">
+          <h2 className="font-display text-xl font-extrabold">
+            กลุ่มที่ยังไม่มีหัวหน้ากลุ่ม {leaderlessGroups.length} กลุ่ม
+          </h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-lg font-medium">
+            {leaderlessGroups.slice(0, 10).map((g) => (
+              <li key={g.id}>
+                {g.nameTh} ({g.bodyName})
+              </li>
+            ))}
+          </ul>
+          {leaderlessGroups.length > 10 && (
+            <p className="mt-1 text-base font-bold">และอีก {leaderlessGroups.length - 10} กลุ่ม</p>
+          )}
+        </section>
+      )}
       {/* Blocked Escalation Alert Strip (CD-07) */}
       {metrics.blockedReports > 0 && (
         <section className="fm-panel flex flex-col justify-between gap-4 bg-[#FFE4E6] p-5 text-[#881337] sm:flex-row sm:items-center">
@@ -83,7 +107,7 @@ export function DashboardTab({
 
             {/* Signature Move: Live Mission Rhythm Bar */}
             <div className="mt-6 border-y-2 border-[#27272A] py-4">
-              <div className="flex items-center justify-between text-sm font-bold text-[#F0F4F8]">
+              <div className="flex items-center justify-between text-base font-bold text-[#F0F4F8]">
                 <span>ความคืบหน้าการส่งรายงานทั้งจังหวัดกาฬสินธุ์</span>
                 <span className="tabular-nums font-mono text-base text-[#C8FF00]">
                   {metrics.submittedReports} / {metrics.expectedReports} กลุ่ม ({submissionRate}%)
@@ -101,13 +125,13 @@ export function DashboardTab({
                   <div className="font-mono text-2xl font-extrabold text-[#C8FF00]">
                     {metrics.activeBodies}
                   </div>
-                  <div className="text-xs font-bold text-[#E2E8F0]">บอดี้ใช้งาน</div>
+                  <div className="text-base font-bold text-[#E2E8F0]">บอดี้ใช้งาน</div>
                 </div>
                 <div className="border-r border-[#27272A] pr-2">
                   <div className="font-mono text-2xl font-extrabold text-[#F0F4F8]">
                     {metrics.heldMeetings}
                   </div>
-                  <div className="text-xs font-bold text-[#E2E8F0]">
+                  <div className="text-base font-bold text-[#E2E8F0]">
                     จัดประชุม (งด {metrics.confirmedNotHeld})
                   </div>
                 </div>
@@ -115,7 +139,7 @@ export function DashboardTab({
                   <div className="font-mono text-2xl font-extrabold text-[#FFB703]">
                     {metrics.openFollowUps}
                   </div>
-                  <div className="text-xs font-bold text-[#E2E8F0]">งานเยี่ยมติดตามเปิดอยู่</div>
+                  <div className="text-base font-bold text-[#E2E8F0]">งานเยี่ยมติดตามเปิดอยู่</div>
                 </div>
               </div>
             </div>
@@ -135,7 +159,7 @@ export function DashboardTab({
               <button
                 type="button"
                 onClick={() => onNavigateTab('brief')}
-                className="fm-btn border-[#F0F4F8] bg-[#27272A] text-sm text-[#F0F4F8] hover:bg-[#1D4ED8]"
+                className="fm-btn border-[#F0F4F8] bg-[#27272A] text-base text-[#F0F4F8] hover:bg-[#1D4ED8]"
               >
                 <span>เปิดสรุปประชุม 20:30</span>
               </button>
@@ -146,7 +170,7 @@ export function DashboardTab({
                 aria-label="เลือกรอบสัปดาห์"
                 value={selectedPeriodId}
                 onChange={(e) => onSelectPeriod(e.target.value)}
-                className="min-h-[48px] w-full max-w-full rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-3 py-2 text-sm font-bold text-[#F0F4F8] sm:w-auto"
+                className="min-h-[48px] w-full max-w-full rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-3 py-2 text-base font-bold text-[#F0F4F8] sm:w-auto"
               >
                 {periods.map((p) => {
                   const statusLabel =
@@ -167,7 +191,7 @@ export function DashboardTab({
 
               <a
                 href={`/api/v1/insights?export=reports&periodId=${selectedPeriod.id}`}
-                className="fm-btn fm-btn-paper text-sm"
+                className="fm-btn fm-btn-paper text-base"
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
                 <span>CSV รายงาน</span>
@@ -191,7 +215,7 @@ export function DashboardTab({
             <div className="tabular-nums my-3 font-mono text-4xl font-extrabold text-[#141413]">
               {metrics.submittedReports}/{metrics.expectedReports}
             </div>
-            <p className="text-sm font-bold text-[#141413]">
+            <p className="text-base font-bold text-[#141413]">
               กลุ่มพันธกิจใช้งานทั้งหมด {metrics.activeGroups} กลุ่ม
             </p>
           </div>
@@ -206,7 +230,7 @@ export function DashboardTab({
             <div className="tabular-nums my-3 font-mono text-4xl font-extrabold text-[#141413]">
               {metrics.missingReports}
             </div>
-            <p className="text-sm font-bold text-[#27272A]">
+            <p className="text-base font-bold text-[#27272A]">
               ส่งหลังกำหนด 20:00 น. {metrics.lateReports} กลุ่ม
             </p>
           </div>
@@ -221,7 +245,7 @@ export function DashboardTab({
             <div className="tabular-nums my-3 font-mono text-4xl font-extrabold text-[#141413]">
               {metrics.periodAttendance}
             </div>
-            <p className="text-sm font-bold text-[#141413]">
+            <p className="text-base font-bold text-[#141413]">
               ผู้เยี่ยมใหม่ {metrics.newVisitors} · กลับมาเยี่ยม {metrics.returningVisitors}
             </p>
           </div>
@@ -244,7 +268,7 @@ export function DashboardTab({
             <div className="tabular-nums my-3 font-mono text-4xl font-extrabold text-[#141413]">
               {metrics.blockedReports}
             </div>
-            <p className="text-sm font-bold text-[#27272A]">
+            <p className="text-base font-bold text-[#27272A]">
               {metrics.blockedReports > 0
                 ? 'รอผู้ดูแลระบบตรวจสอบและปลดล็อก'
                 : 'เส้นทางอนุมัติปกติครบทุกบอดี้'}
@@ -263,7 +287,7 @@ export function DashboardTab({
             </h2>
             <a
               href="/api/v1/insights?export=visitors"
-              className="fm-btn fm-btn-paper min-h-[48px] px-3.5 py-1.5 text-sm"
+              className="fm-btn fm-btn-paper min-h-[48px] px-3.5 py-1.5 text-base"
             >
               <Download className="h-4 w-4" aria-hidden="true" />
               <span>ส่งออก CSV ผู้เยี่ยม</span>
@@ -276,29 +300,29 @@ export function DashboardTab({
               <div key={b.bodyId} className="space-y-3 bg-[var(--fm-paper)] p-4">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-base font-extrabold text-[#141413]">{b.bodyName}</span>
-                  <span className="rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-xs font-bold text-[#141413]">
+                  <span className="rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-base font-bold text-[#141413]">
                     {b.bodyCode}
                   </span>
                 </div>
-                <div className="tabular-nums grid grid-cols-3 gap-2 text-center font-mono text-sm sm:grid-cols-5">
+                <div className="tabular-nums grid grid-cols-3 gap-2 text-center font-mono text-base sm:grid-cols-5">
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-xs font-bold">ทั้งหมด</div>
+                    <div className="text-base font-bold">ทั้งหมด</div>
                     <div className="font-extrabold">{b.expectedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-xs font-bold">ส่งแล้ว</div>
+                    <div className="text-base font-bold">ส่งแล้ว</div>
                     <div className="font-extrabold text-[#1D4ED8]">{b.submittedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-xs font-bold">อนุมัติ</div>
+                    <div className="text-base font-bold">อนุมัติ</div>
                     <div className="font-extrabold text-[#047857]">{b.approvedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[var(--fm-canvas)] p-2">
-                    <div className="text-xs font-bold">ติดขัด</div>
+                    <div className="text-base font-bold">ติดขัด</div>
                     <div className="font-extrabold text-[#BE123C]">{b.blockedReports}</div>
                   </div>
                   <div className="rounded-lg border border-[#141413] bg-[#C8FF00] p-2">
-                    <div className="text-xs font-bold">คนรวม</div>
+                    <div className="text-base font-bold">คนรวม</div>
                     <div className="font-extrabold text-[#141413]">{b.attendance}</div>
                   </div>
                 </div>
@@ -309,7 +333,7 @@ export function DashboardTab({
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[580px] border-collapse text-left">
               <thead>
-                <tr className="border-b-2 border-[#141413] bg-[#F0F4F8] text-sm font-extrabold text-[#141413]">
+                <tr className="border-b-2 border-[#141413] bg-[#F0F4F8] text-base font-extrabold text-[#141413]">
                   <th className="py-3.5 pl-6 pr-4">บอดี้พันธกิจ</th>
                   <th className="px-3 py-3.5 text-right">ทั้งหมด</th>
                   <th className="px-3 py-3.5 text-right">ส่งแล้ว</th>
@@ -323,7 +347,7 @@ export function DashboardTab({
                   <tr key={b.bodyId} className="bg-white transition hover:bg-[#F0F4F8]">
                     <td className="py-4 pl-6 pr-4 font-extrabold text-[#141413]">
                       {b.bodyName}
-                      <span className="ml-2 rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-xs font-bold text-[#141413]">
+                      <span className="ml-2 rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-base font-bold text-[#141413]">
                         {b.bodyCode}
                       </span>
                     </td>
@@ -358,7 +382,7 @@ export function DashboardTab({
             <button
               type="button"
               onClick={() => onNavigateTab('map')}
-              className="fm-btn fm-btn-paper min-h-[48px] px-3.5 py-1.5 text-xs"
+              className="fm-btn fm-btn-paper min-h-[48px] px-3.5 py-1.5 text-base"
             >
               ดูแผนที่
             </button>
@@ -374,7 +398,7 @@ export function DashboardTab({
               >
                 <div>
                   <div className="text-base font-extrabold text-[#141413]">{g.nameTh}</div>
-                  <div className="text-sm font-medium text-[#27272A]">
+                  <div className="text-base font-medium text-[#27272A]">
                     อ.{g.district} · {g.bodyName}
                   </div>
                 </div>

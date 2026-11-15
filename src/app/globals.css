@@ -206,3 +206,9 @@ a {
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Map zoom and compass buttons of the map library: same minimum tap size as every other control (48 px). */
+.maplibregl-ctrl.maplibregl-ctrl-group button {
+  width: 48px;
+  height: 48px;
+}

@@ -186,6 +186,7 @@ export interface VisitorView {
   firstOriginGroupId: string | null;
   originGroupName: string;
   visitCount: number;
+  followupStatus: 'first_visit' | 'awaiting_followup' | 'contacted' | 'returned' | 'ongoing_care' | 'completed';
   convertedMemberId: string | null;
   piiMasked: boolean;
 }
@@ -196,6 +197,9 @@ export interface FollowUpView {
   groupName: string;
   title: string;
   notes: string | null;
+  outcomeNote: string | null;
+  sourceType: 'manual' | 'absent_2_weeks' | 'absent_3plus_weeks' | 'visitor_not_returned' | 'report_support';
+  priority: 'low' | 'normal' | 'high';
   status: 'open' | 'in_progress' | 'completed' | 'cancelled';
   dueDate: string | null;
 }

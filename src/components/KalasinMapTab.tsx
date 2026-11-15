@@ -20,7 +20,8 @@ import {
   Users,
 } from 'lucide-react';
 import type { GroupWithContext, WorkspacePayload } from '@/lib/types';
-import { KALASIN_TEAM_G_POINTS, type FieldMissionPoint } from '@/lib/kalasin-field-points';
+import type { FieldMissionPoint } from '@/lib/kalasin-field-points';
+import { apiRequest } from '@/lib/api-client';
 import { StatusBadge } from './StatusBadge';
 
 const KALASIN_PROVINCE_CENTER: [number, number] = [103.62, 16.56];
@@ -80,15 +81,42 @@ export function KalasinMapTab({
   workspace: WorkspacePayload;
   onSelectGroupReport: (groupId: string) => void;
 }) {
+  // DEC-06, DEC-17: field points come from the server, which decides who may read them (admin, the Body Leader of
+  // the point's Body, the assigned coordinator). The list is never part of the browser bundle.
+  const [fieldPoints, setFieldPoints] = useState<FieldMissionPoint[]>([]);
   const [selected, setSelected] = useState<SelectedItem | null>(
-    KALASIN_TEAM_G_POINTS[0]
-      ? { kind: 'field', point: KALASIN_TEAM_G_POINTS[0] }
-      : workspace.groups[0]
-        ? { kind: 'group', group: workspace.groups[0] }
-        : null
+    workspace.groups[0] ? { kind: 'group', group: workspace.groups[0] } : null
   );
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{
+      points: Array<{ pointNo: number; pointName: string; teamCode: string; coordinatorName: string | null; phone: string | null; latitude: number; longitude: number; mapsUrl: string | null }>;
+    }>('/api/v1/team-field-points')
+      .then((res) => {
+        if (cancelled) return;
+        setFieldPoints(
+          res.points.map((p) => ({
+            no: p.pointNo,
+            name: p.pointName,
+            team: p.teamCode,
+            coordinator: p.coordinatorName ?? '-',
+            phone: p.phone ?? '',
+            latitude: p.latitude,
+            longitude: p.longitude,
+            mapsUrl: p.mapsUrl ?? '',
+          }))
+        );
+      })
+      .catch(() => {
+        // 403 is the normal answer for most people. They see the groups only.
+        if (!cancelled) setFieldPoints([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [mapMode, setMapMode] = useState<'maplibre' | 'schematic'>('maplibre');
-  const [layerFilter, setLayerFilter] = useState<'ALL' | 'GROUPS' | 'TEAM_G'>('TEAM_G');
+  const [layerFilter, setLayerFilter] = useState<'ALL' | 'GROUPS' | 'TEAM_G'>('ALL');
   const [mapError, setMapError] = useState<string | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -123,8 +151,8 @@ export function KalasinMapTab({
   );
 
   const visibleFieldPoints = useMemo(
-    () => (layerFilter === 'GROUPS' ? [] : KALASIN_TEAM_G_POINTS),
-    [layerFilter]
+    () => (layerFilter === 'GROUPS' ? [] : fieldPoints),
+    [layerFilter, fieldPoints]
   );
 
   const totalVisible = visibleGroups.length + visibleFieldPoints.length;
@@ -210,7 +238,8 @@ export function KalasinMapTab({
       el.style.background = isSelected ? 'var(--fm-lime)' : 'var(--fm-paper)';
       el.style.color = 'var(--fm-ink)';
       el.style.fontWeight = '800';
-      el.style.fontSize = '13px';
+      el.style.fontSize = '16px';
+      el.style.minHeight = '48px';
       el.style.cursor = 'pointer';
       el.style.whiteSpace = 'nowrap';
       el.style.boxShadow = isSelected
@@ -259,7 +288,8 @@ export function KalasinMapTab({
       el.style.background = isSelected ? 'var(--fm-lime)' : 'var(--fm-paper)';
       el.style.color = 'var(--fm-ink)';
       el.style.fontWeight = '800';
-      el.style.fontSize = '12px';
+      el.style.fontSize = '16px';
+      el.style.minHeight = '48px';
       el.style.cursor = 'pointer';
       el.style.whiteSpace = 'nowrap';
       el.style.boxShadow = isSelected
@@ -276,7 +306,7 @@ export function KalasinMapTab({
       badge.style.borderRadius = '9999px';
       badge.style.background = 'var(--fm-violet)';
       badge.style.color = 'var(--fm-paper)';
-      badge.style.fontSize = '12px';
+      badge.style.fontSize = '16px';
       badge.style.fontWeight = '800';
 
       const text = document.createElement('span');
@@ -338,7 +368,7 @@ export function KalasinMapTab({
           </h1>
           <p className="mt-1 text-base font-medium text-[var(--fm-canvas)]">
             รวมกลุ่มนำร่องส่งรายงาน ({workspace.groups.length}) และพิกัดจุดพันธกิจจริง ทีม G (
-            {KALASIN_TEAM_G_POINTS.length}) บนแผนที่ถนนจริง MapLibre + OpenStreetMap
+            {fieldPoints.length}) บนแผนที่ถนนจริง MapLibre + OpenStreetMap
           </p>
         </div>
 
@@ -347,7 +377,7 @@ export function KalasinMapTab({
             <button
               type="button"
               onClick={() => setMapMode('maplibre')}
-              className={`min-h-[42px] rounded-lg px-3.5 py-1.5 text-sm font-extrabold transition-transform ${
+              className={`min-h-[48px] rounded-lg px-3.5 py-1.5 text-base font-extrabold transition-transform ${
                 mapMode === 'maplibre'
                   ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
                   : 'text-[var(--fm-paper)]'
@@ -361,7 +391,7 @@ export function KalasinMapTab({
             <button
               type="button"
               onClick={() => setMapMode('schematic')}
-              className={`min-h-[42px] rounded-lg px-3.5 py-1.5 text-sm font-extrabold transition-transform ${
+              className={`min-h-[48px] rounded-lg px-3.5 py-1.5 text-base font-extrabold transition-transform ${
                 mapMode === 'schematic'
                   ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
                   : 'text-[var(--fm-paper)]'
@@ -384,33 +414,33 @@ export function KalasinMapTab({
       {/* Layer Filter + Quick Jump Chips */}
       <section className="fm-card space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-extrabold text-[var(--fm-ink)]">แสดงชั้นข้อมูล:</span>
+          <span className="text-base font-extrabold text-[var(--fm-ink)]">แสดงชั้นข้อมูล:</span>
           <button
             type="button"
             onClick={() => setLayerFilter('ALL')}
-            className={`min-h-[42px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-sm font-extrabold ${
+            className={`min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-base font-extrabold ${
               layerFilter === 'ALL'
                 ? 'bg-[var(--fm-ink)] text-[var(--fm-lime)]'
                 : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
             }`}
           >
-            ทั้งหมด ({workspace.groups.length + KALASIN_TEAM_G_POINTS.length})
+            ทั้งหมด ({workspace.groups.length + fieldPoints.length})
           </button>
           <button
             type="button"
             onClick={() => setLayerFilter('TEAM_G')}
-            className={`min-h-[42px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-sm font-extrabold ${
+            className={`min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-base font-extrabold ${
               layerFilter === 'TEAM_G'
                 ? 'bg-[var(--fm-violet)] text-[var(--fm-paper)]'
                 : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
             }`}
           >
-            จุดพันธกิจจริง ทีม G ({KALASIN_TEAM_G_POINTS.length})
+            จุดพันธกิจจริง ทีม G ({fieldPoints.length})
           </button>
           <button
             type="button"
             onClick={() => setLayerFilter('GROUPS')}
-            className={`min-h-[42px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-sm font-extrabold ${
+            className={`min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] px-3.5 py-1.5 text-base font-extrabold ${
               layerFilter === 'GROUPS'
                 ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
                 : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
@@ -428,7 +458,7 @@ export function KalasinMapTab({
                 key={g.id}
                 type="button"
                 onClick={() => setSelected({ kind: 'group', group: g })}
-                className={`min-h-[38px] rounded-xl border-2 border-[var(--fm-ink)] px-2.5 py-1 text-xs font-extrabold ${
+                className={`min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] px-2.5 py-1 text-base font-extrabold ${
                   isSelected
                     ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)] shadow-[2px_2px_0px_var(--fm-ink)]'
                     : 'bg-[var(--fm-canvas)] text-[var(--fm-ink)]'
@@ -445,7 +475,7 @@ export function KalasinMapTab({
                 key={`g-chip-${pt.no}`}
                 type="button"
                 onClick={() => setSelected({ kind: 'field', point: pt })}
-                className={`min-h-[38px] rounded-xl border-2 border-[var(--fm-ink)] px-2.5 py-1 text-xs font-extrabold ${
+                className={`min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] px-2.5 py-1 text-base font-extrabold ${
                   isSelected
                     ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)] shadow-[2px_2px_0px_var(--fm-ink)]'
                     : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
@@ -474,7 +504,7 @@ export function KalasinMapTab({
                   <button
                     type="button"
                     onClick={() => setMapMode('schematic')}
-                    className="fm-btn fm-btn-lime whitespace-nowrap text-sm"
+                    className="fm-btn fm-btn-lime whitespace-nowrap text-base"
                   >
                     <Layers className="h-4 w-4" aria-hidden="true" />
                     <span>สลับไปใช้แผนผังแบบง่าย</span>
@@ -569,7 +599,7 @@ export function KalasinMapTab({
                       >
                         <MapPin className="h-3 w-3" aria-hidden="true" />
                       </span>
-                      <span className="whitespace-nowrap text-xs font-extrabold">
+                      <span className="whitespace-nowrap text-base font-extrabold">
                         {shortLabel(g.nameTh)}
                       </span>
                     </div>
@@ -592,7 +622,7 @@ export function KalasinMapTab({
                         : 'z-10 bg-[var(--fm-paper)] text-[var(--fm-ink)] shadow-[2px_2px_0px_var(--fm-ink)]'
                     }`}
                   >
-                    <span className="whitespace-nowrap text-xs font-extrabold">
+                    <span className="whitespace-nowrap text-base font-extrabold">
                       <span className="mr-1 text-[var(--fm-violet)]">G{pt.no}</span>
                       {pt.name}
                     </span>
@@ -613,11 +643,11 @@ export function KalasinMapTab({
                     <h2 className="font-display text-2xl font-extrabold text-[var(--fm-paper)]">
                       {selected.group.nameTh}
                     </h2>
-                    <span className="rounded-md border border-[var(--fm-paper)] bg-[var(--fm-ink)] px-2 py-0.5 font-mono text-xs font-bold text-[var(--fm-lime)]">
+                    <span className="rounded-md border border-[var(--fm-paper)] bg-[var(--fm-ink)] px-2 py-0.5 font-mono text-base font-bold text-[var(--fm-lime)]">
                       {selected.group.groupCode}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm font-bold text-[var(--fm-canvas)]">
+                  <p className="mt-1 text-base font-bold text-[var(--fm-canvas)]">
                     {selected.group.bodyName}
                   </p>
                 </div>
@@ -631,14 +661,14 @@ export function KalasinMapTab({
 
                   <dl className="divide-y-2 divide-[var(--fm-ink)] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] text-base">
                     <div className="p-3">
-                      <dt className="text-xs font-extrabold text-[var(--fm-ink)]">ที่ตั้งกลุ่มบ้าน</dt>
+                      <dt className="text-base font-extrabold text-[var(--fm-ink)]">ที่ตั้งกลุ่มบ้าน</dt>
                       <dd className="mt-0.5 font-bold text-[var(--fm-ink)]">
                         {selected.group.addressSummary || 'ยังไม่ระบุสถานที่นัดหมาย'}
                       </dd>
                     </div>
                     <div className="p-3">
-                      <dt className="text-xs font-extrabold text-[var(--fm-ink)]">พิกัด GPS จริง</dt>
-                      <dd className="tabular-nums mt-0.5 font-mono text-sm font-extrabold text-[var(--fm-violet)]">
+                      <dt className="text-base font-extrabold text-[var(--fm-ink)]">พิกัด GPS จริง</dt>
+                      <dd className="tabular-nums mt-0.5 font-mono text-base font-extrabold text-[var(--fm-violet)]">
                         {typeof selected.group.latitude === 'number' &&
                         typeof selected.group.longitude === 'number'
                           ? `${selected.group.latitude.toFixed(6)}, ${selected.group.longitude.toFixed(6)}`
@@ -646,10 +676,10 @@ export function KalasinMapTab({
                       </dd>
                     </div>
                     <div className="p-3">
-                      <dt className="text-xs font-extrabold text-[var(--fm-ink)]">
+                      <dt className="text-base font-extrabold text-[var(--fm-ink)]">
                         ทีมผู้รับผิดชอบกลุ่ม
                       </dt>
-                      <dd className="mt-2 space-y-1.5 text-sm">
+                      <dd className="mt-2 space-y-1.5 text-base">
                         {selected.group.assignments.map((a) => (
                           <div
                             key={a.id}
@@ -678,7 +708,7 @@ export function KalasinMapTab({
                   href={`https://www.google.com/maps/dir/?api=1&destination=${selected.group.latitude},${selected.group.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="fm-btn fm-btn-ink flex w-full items-center justify-center gap-2 whitespace-nowrap text-sm"
+                  className="fm-btn fm-btn-ink flex w-full items-center justify-center gap-2 whitespace-nowrap text-base"
                 >
                   <Navigation className="h-4 w-4" aria-hidden="true" />
                   <span>เปิดนำทางไปกลุ่มบ้าน</span>
@@ -693,11 +723,11 @@ export function KalasinMapTab({
                     <h2 className="font-display text-2xl font-extrabold text-[var(--fm-paper)]">
                       {selected.point.name}
                     </h2>
-                    <span className="rounded-md border border-[var(--fm-paper)] bg-[var(--fm-ink)] px-2.5 py-0.5 font-mono text-xs font-bold text-[var(--fm-lime)]">
+                    <span className="rounded-md border border-[var(--fm-paper)] bg-[var(--fm-ink)] px-2.5 py-0.5 font-mono text-base font-bold text-[var(--fm-lime)]">
                       ทีม {selected.point.team} · #{selected.point.no}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm font-bold text-[var(--fm-paper)]">
+                  <p className="mt-1 text-base font-bold text-[var(--fm-paper)]">
                     ข้อมูลจุดพันธกิจจริงจาก Google Sheet
                   </p>
                 </div>
@@ -705,21 +735,21 @@ export function KalasinMapTab({
                 <div className="space-y-4 p-5">
                   <dl className="divide-y-2 divide-[var(--fm-ink)] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] text-base">
                     <div className="p-3">
-                      <dt className="text-xs font-extrabold text-[var(--fm-ink)]">ผู้ประสานงานจุดพันธกิจ</dt>
+                      <dt className="text-base font-extrabold text-[var(--fm-ink)]">ผู้ประสานงานจุดพันธกิจ</dt>
                       <dd className="mt-1 flex items-center gap-2 font-extrabold text-[var(--fm-ink)]">
                         <Users className="h-4 w-4 text-[var(--fm-violet)]" aria-hidden="true" />
                         <span>{selected.point.coordinator}</span>
                       </dd>
                     </div>
                     <div className="p-3">
-                      <dt className="text-xs font-extrabold text-[var(--fm-ink)]">เบอร์โทรติดต่อ</dt>
+                      <dt className="text-base font-extrabold text-[var(--fm-ink)]">เบอร์โทรติดต่อ</dt>
                       <dd className="mt-1 font-mono text-base font-extrabold text-[var(--fm-ink)]">
                         {selected.point.phone}
                       </dd>
                     </div>
                     <div className="p-3">
-                      <dt className="text-xs font-extrabold text-[var(--fm-ink)]">พิกัด GPS จริง</dt>
-                      <dd className="tabular-nums mt-0.5 font-mono text-sm font-extrabold text-[var(--fm-violet)]">
+                      <dt className="text-base font-extrabold text-[var(--fm-ink)]">พิกัด GPS จริง</dt>
+                      <dd className="tabular-nums mt-0.5 font-mono text-base font-extrabold text-[var(--fm-violet)]">
                         {selected.point.latitude.toFixed(6)}, {selected.point.longitude.toFixed(6)}
                       </dd>
                     </div>
@@ -728,6 +758,7 @@ export function KalasinMapTab({
               </div>
 
               <div className="space-y-2.5 border-t-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-5">
+                {selected.point.phone && !selected.point.phone.includes('*') && (
                 <a
                   href={`tel:${selected.point.phone.replace(/[^0-9+]/g, '')}`}
                   className="fm-btn fm-btn-lime flex w-full items-center justify-center gap-2 whitespace-nowrap text-base"
@@ -735,11 +766,12 @@ export function KalasinMapTab({
                   <Phone className="h-5 w-5" aria-hidden="true" />
                   <span>โทรหา {selected.point.coordinator.split(' ')[0]}</span>
                 </a>
+                )}
                 <a
                   href={selected.point.mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="fm-btn fm-btn-ink flex w-full items-center justify-center gap-2 whitespace-nowrap text-sm"
+                  className="fm-btn fm-btn-ink flex w-full items-center justify-center gap-2 whitespace-nowrap text-base"
                 >
                   <Navigation className="h-4 w-4" aria-hidden="true" />
                   <span>เปิดนำทางด้วย Google Maps</span>
@@ -764,11 +796,11 @@ export function KalasinMapTab({
               <h2 className="font-display text-xl font-extrabold text-[var(--fm-ink)]">
                 กลุ่มรอปักหมุด (ไม่มีพิกัด GPS)
               </h2>
-              <p className="text-sm font-medium text-[var(--fm-ink-muted)]">
+              <p className="text-base font-medium text-[var(--fm-ink-muted)]">
                 แสดงเฉพาะรายชื่อและคำอธิบายสถานที่จริง โดยไม่ปักหมุดสมมติบนแผนที่
               </p>
             </div>
-            <span className="rounded-full border-2 border-[var(--fm-ink)] bg-[var(--fm-amber-soft)] px-3 py-1 text-sm font-extrabold text-[var(--fm-ink)]">
+            <span className="rounded-full border-2 border-[var(--fm-ink)] bg-[var(--fm-amber-soft)] px-3 py-1 text-base font-extrabold text-[var(--fm-ink)]">
               {unlocatedGroups.length} กลุ่ม
             </span>
           </div>
@@ -780,26 +812,26 @@ export function KalasinMapTab({
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs font-extrabold text-[var(--fm-violet)]">
+                    <span className="font-mono text-base font-extrabold text-[var(--fm-violet)]">
                       {g.groupCode}
                     </span>
-                    <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-paper)] px-2 py-0.5 text-xs font-bold text-[var(--fm-ink)]">
+                    <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-paper)] px-2 py-0.5 text-base font-bold text-[var(--fm-ink)]">
                       อ.{g.district}
                     </span>
                   </div>
                   <h3 className="mt-1.5 font-display text-lg font-extrabold text-[var(--fm-ink)]">
                     {g.nameTh}
                   </h3>
-                  <p className="mt-1 text-sm text-[var(--fm-ink-secondary)]">
+                  <p className="mt-1 text-base text-[var(--fm-ink-secondary)]">
                     {g.addressSummary || 'ยังไม่ระบุสถานที่นัดหมาย'}
                   </p>
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--fm-ink)]/20 pt-2.5 text-xs font-bold text-[var(--fm-ink-muted)]">
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--fm-ink)]/20 pt-2.5 text-base font-bold text-[var(--fm-ink-muted)]">
                   <span>{g.bodyName || 'รอจัดสรรบอดี้'}</span>
                   <button
                     type="button"
                     onClick={() => onSelectGroupReport(g.id)}
-                    className="min-h-[40px] rounded-lg border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3 py-1.5 font-extrabold text-[var(--fm-ink)] hover:bg-[var(--fm-lime)]"
+                    className="min-h-[48px] rounded-lg border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3 py-1.5 font-extrabold text-[var(--fm-ink)] hover:bg-[var(--fm-lime)]"
                   >
                     ส่งรายงาน
                   </button>

@@ -1,14 +1,28 @@
 # FaithMap — Master Execution Status
 
+> **STATE CORRECTION (2026-11-15, completion round). Read this before the rest of the file.**
+> This file was written in earlier rounds. Some statements are no longer true. Where this box and the text below disagree, this box is right.
+>
+> | Earlier statement | Verified state now |
+> |---|---|
+> | "No pull request was opened" | PR #1 exists, **draft**, not merged. GitHub CI passes on the branch heads checked in this round |
+> | "Nothing was deployed" | Vercel built Preview deployments of this branch. **No Production deployment was made by this work.** `main` is unchanged |
+> | "No Vercel project, Neon project or LINE channel exists" | Vercel project `faithmap` exists. Neon project `faithmap` exists (branches `main`, `development`; both hold 0 FaithMap tables, read-only check). A LINE Login channel exists (owner-reported IDs, **not verified in the LINE console**) |
+> | Test counts (254 tests, 4 migrations, round 7) | See `FAITHMAP_TEST_REPORT.md` for the current counts and `FAITHMAP_COMPLETION_REPORT.md` for the status of every environment |
+> | Gate 0 "No Vercel project ... exists" | Gate 0 is still **not passed**: Vercel Authentication blocks LINE users on Preview, no scheduler exists, and the owner approvals Y2 to Y7 are open |
+>
+> **Nothing in this file proves that Preview, Neon, LINE or Production works.** Only local PGlite, local PostgreSQL 16, GitHub CI and a local browser were used.
+
+
 **Updated:** 2026-11-15 (round 7: PostgreSQL 16 test switch, Node 24 CI prep, cleanup/session audit, input limits) · **Branch:** `claude/vigilant-noether-4fn1g1` · **`main` is unchanged (`e38a24e`).**
 **Budget:** 0 THB/month. No paid service was used, created or enabled.
-**Push / merge / deploy:** the feature branch was pushed after the tests above passed (round-2 Git rules). `main` was not touched. No pull request was opened. Nothing was deployed.
+**Push / merge / deploy:** the feature branch was pushed after the tests above passed (round-2 Git rules). `main` was not touched. (Corrected: see the state-correction box at the top.)
 
 ## Gate overview
 
 | Gate | Status | Reason |
 |---|---|---|
-| 0 Infrastructure readiness | **NEEDS OWNER APPROVAL** | B-1 (Vercel Hobby reply) and B-2 (scheduler) are open. No Vercel project, Neon project or LINE channel exists. |
+| 0 Infrastructure readiness | **NEEDS OWNER APPROVAL** | B-1 (Vercel Hobby reply) and B-2 (scheduler) are open. (Corrected: a Vercel project, a Neon project and a LINE channel exist; none is verified end to end.) |
 | 1 Phase 3B verification | **READY FOR OWNER REVIEW. Item 2 BLOCKED** | 8 + 2 defects fixed. Your 3 decisions are applied (see "Round 4"). Growth columns Y–AD stay unmapped: the source workbook is not available. |
 | 2 Database and security hardening | **IN PROGRESS** | All 9 listed blockers are done. Round 5 closed the PII/secret scan, input limits and route-level authorization matrix (see Round 5). Open: real-PostgreSQL run of older tests, challenge cleanup, platform firewall. No Critical or High code finding is open. |
 | 3 LINE identity and authentication | **BLOCKED** | Server side built. A Developing channel now exists (owner-reported). Real LINE test needs a database, variables, a protection decision and the Endpoint URL (see `FAITHMAP_LINE_MINIAPP_READINESS.md`). |
@@ -65,7 +79,7 @@ No gate is PASSED. Gate 0 has critical blockers.
 Facts and the scheduler comparison are in `FAITHMAP_INFRASTRUCTURE_AUDIT.md` (Z-01, Z-02, Z-07) and are unchanged.
 - **B-1:** Vercel Hobby terms say "personal or non-commercial use" with no definition. A written Vercel reply is required. I cannot send it. Text is in the checklist.
 - **B-2:** Legacy Cron fails `DEC-01` on Hobby. Vercel Schedules (beta) runs 0–15 minutes late. Recommendation unchanged. Needs your decision.
-- No Vercel project, Neon database or deployment exists.
+- (Corrected: see the state-correction box at the top. A Vercel project and a Neon project now exist.)
 
 ---
 

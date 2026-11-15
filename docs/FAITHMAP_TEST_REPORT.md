@@ -1,45 +1,41 @@
-# FaithMap — Test Report (Q-5 to Q-9 round)
+# FaithMap — Test Report (completion round)
 
-Date: 2026-11-15. Branch `claude/vigilant-noether-4fn1g1`. Base: `45cf05c` (CI passed). All results below come from commands run in this session on a scratch environment. No Neon database, no LINE, no Vercel Preview and no Production was used.
+Date: 2026-11-15. Branch `claude/vigilant-noether-4fn1g1`. Every result below comes from a command run in this session on a **scratch** environment (PGlite, a local PostgreSQL 16.15 server, a local Chromium and Node 22). **No Neon database, no Vercel Preview, no real LINE and no Production was used.**
 
 ## 1. Results
 
 | Check | Command | Result |
 |---|---|---|
 | Type check | `npm run typecheck` | exit 0 |
-| Default suite (PGlite 18.6) | `npx vitest run` | 32 files passed, 1 skipped; **302 tests passed, 16 skipped** |
-| Full suite on PostgreSQL 16.15 (same command as CI) | `FAITHMAP_TEST_ALL_POSTGRES=1 … npx vitest run --fileParallelism=false --exclude tests/real-postgres.test.ts` | 32 files, **302 passed, 0 failed** |
+| Default suite (PGlite 18.6) | `npx vitest run` | 36 files passed, 1 skipped; **329 tests passed, 16 skipped** |
+| All suites on PostgreSQL 16.15 (the CI command) | `FAITHMAP_TEST_ALL_POSTGRES=1 … npx vitest run --fileParallelism=false --exclude tests/real-postgres.test.ts` | 36 files; **329 passed, 0 failed** |
 | Real PostgreSQL suite | `npx vitest run tests/real-postgres.test.ts` | 16 passed |
 | Build | `npm run build` | exit 0 |
-| Browser check of the admin screen "จุดลงพื้นที่" (Chromium, scratch demo database) | script in the session scratchpad | 360, 768, 1280 px: no horizontal scroll, controls at least 48 px high, text at least 16 px. One layout defect (select wider than its card at 360 px) was found and fixed, then the check passed again |
-| GitHub CI | Actions | `45cf05c`: passed (push and pull request). The commit that holds this report: read after the push |
+| Browser files hold no field point phone numbers or names | `npm run check:bundle` | 0 hits (the build before the fix: 25 hits) |
+| MINI app, 3 widths (Chromium, mock LIFF, demo database) | `node scripts/e2e-mini.mjs` | 84 of 84 |
+| MINI report form, 3 widths | `node scripts/e2e-mini-report.mjs` | 52 of 52 (a first run found 5 failures: the new checkboxes were 28 px; fixed to 48 px) |
+| Desktop screens, 3 widths | `node scripts/e2e-admin-screens.mjs` | 89 of 89 (first runs found text under 16 px, controls under 48 px, map pins and map buttons; fixed) |
+| GitHub CI | Actions | Read after the push; see `FAITHMAP_COMPLETION_REPORT.md` |
 
-Not run: `npx impeccable detect` (tool not installed in the sandbox; the manual checks above replace it for this screen only), LINE, Preview, Neon, real devices.
+Not run: `npx impeccable detect` (not installed in the sandbox), any test on a real phone, LINE, Preview, Neon, a pooled connection, Production, load or contrast tests.
 
-## 2. New and changed tests
+## 2. Tests added or extended in this round
 
 | File | Tests | Covers |
 |---|---|---|
-| `tests/gate16-q5-q9-scope.test.ts` | 20 | Q-5, Q-6 (pastor reads no `notHeldReason`, no `summaryNotes`); Q-7 (no follow-up title in stored brief or any view); Q-9 (admin, pastor, Body Leader of each Body, two roles, version 1 and version 2 briefs, no brief role, stored row unchanged by reads, source structure guard); Q-8 (migration 0004 is additive; old rows unmapped; assignment rules; incomplete mapping; complete mapping; change of coordinator; deleted coordinator account; deleted Body; inactive Body; revoked assignment; suspended coordinator; sync keeps links; audit holds ids only) |
-| `tests/gate17-q8-q9-routes.test.ts` | 4 | Real route handlers with real sessions: only admin syncs or assigns; CSRF; input validation; no non-admin read before the mapping is complete; briefs in `/api/v1/workspace` per role; generate action is admin only |
-| `tests/gate15`, `gate1`, `phase3b1`, `gate10` | unchanged except the earlier field-point rule | Still pass |
+| `gate16-q5-q9-scope.test.ts` | 20 | Restricted text, count-only brief, brief per role, field point mapping |
+| `gate17-q8-q9-routes.test.ts` | 4 | Real route handlers and sessions: field point assignment, brief per role |
+| `gate18-followups-attendance-visitors.test.ts` | 13 | Absence streaks, visitor not returned, lifecycle, outcome, duplicate warning, attendance statuses, migration data-step order |
+| `gate19-bodies-roster-reminders.test.ts` | 6 | Body management, roster, weekend reminders |
+| `gate20-field-points-not-in-client.test.ts` | 2 | Source guard for the field point list (build check is separate) |
+| `gate21-report-content.test.ts` | 6 | Report content and visibility, first submit time, late flag |
 
-## 3. Mapping of requested cases to tests
+Red-before-green was run for: G-03 (late flag on resubmit: the test failed with the old line), G-02 (`check:bundle` 25 hits before, 0 after), Q-5 to Q-9 (earlier round).
 
-| Case | Test |
-|---|---|
-| Mapping incomplete | `after the mapping is complete…` (first half) and `gate17` |
-| Mapping complete | same (second half) |
-| Change of coordinator | `change of coordinator…` |
-| Deleted coordinator account | `a deleted coordinator account…` |
-| Revoked coordinator assignment | `a deleted coordinator account clears the link… a revoked or suspended coordinator loses access` (`coordinatorEligible` false and 403) |
-| Deleted Body | `a deleted Body unmaps…` |
-| Source sync | `a sync of the source list keeps the mapping` |
-| Invalid Body or coordinator | `validation…` |
-| Brief versions 1 and 2 for every role | `Q-7 and Q-9: Meeting Brief by role and scope` (six tests) and `gate17` |
+## 3. Limits of this evidence
 
-## 4. Limits of this evidence
-
-- The route tests call the real handlers in the Node test process. They do not use a browser or the Vercel runtime.
-- The pooler (PgBouncer) was not used. Migration 0004 ran on PGlite and PostgreSQL 16 only, not on Neon (PostgreSQL 18.7).
-- The admin screen was checked on a scratch demo database. No real Body, user or field point exists yet.
+- Route tests call the real handlers in the Node test process. They do not use the Vercel runtime.
+- Migration 0005 ran on empty PGlite and PostgreSQL 16 databases. Its data steps (`excused` to `leave`, outcome marker, `first_submitted_at` backfill) were checked as text and order, **not applied to old rows**.
+- Migrations 0004 and 0005 ran on PGlite and PostgreSQL 16 only. Neon runs PostgreSQL 18.7 and was not used.
+- The automatic follow-up rules follow `DEC-21`, which the owner has not confirmed.
+- Browser checks use a mock LIFF and the demo database. They show layout, sizes and flows, not LINE behavior.

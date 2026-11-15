@@ -6,9 +6,11 @@ import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
 import {
   assignLeadershipRole,
+  createBody,
   createGroup,
   revokeAssignment,
   transferGroupToBody,
+  updateBody,
   updateUserStatusByAdmin,
 } from '@/server/modules/organization/service';
 
@@ -27,6 +29,14 @@ export async function POST(req: NextRequest) {
     }
 
     const data = parsed.data;
+    if (data.action === 'create_body') {
+      const created = await createBody(db, actor, data);
+      return NextResponse.json({ ok: true, body: created }, { status: 201 });
+    }
+    if (data.action === 'update_body') {
+      const updated = await updateBody(db, actor, data.bodyId, data);
+      return NextResponse.json({ ok: true, body: updated });
+    }
     if (data.action === 'create_group') {
       const group = await createGroup(db, actor, data);
       return NextResponse.json({ ok: true, group }, { status: 201 });

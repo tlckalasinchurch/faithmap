@@ -514,6 +514,8 @@ export const visitors = pgTable(
     nickname: text('nickname'),
     phoneE164: text('phone_e164'),
     lineUserId: text('line_user_id'),
+    // FR-05.3: first_visit -> awaiting_followup -> contacted -> returned -> ongoing_care -> completed.
+    followupStatus: text('followup_status').notNull().default('first_visit'),
     consentForContact: boolean('consent_for_contact').notNull().default(false),
     consentRecordedAt: timestamp('consent_recorded_at', { withTimezone: true }),
     consentCapturedByUserId: uuid('consent_captured_by_user_id').references(() => users.id, {
@@ -533,6 +535,10 @@ export const visitors = pgTable(
     check(
       'visitors_pdpa_consent_chk',
       sql`${t.phoneE164} IS NULL OR ${t.consentForContact} = true`
+    ),
+    check(
+      'visitors_followup_status_chk',
+      sql`${t.followupStatus} IN ('first_visit', 'awaiting_followup', 'contacted', 'returned', 'ongoing_care', 'completed')`
     ),
   ]
 );
@@ -590,6 +596,15 @@ export const weeklyReports = pgTable(
     offeringAmountThb: numeric('offering_amount_thb', { precision: 12, scale: 2 })
       .notNull()
       .default('0.00'),
+    // FR-07.2: content of the weekly report. Free text fields are Restricted Data like `summary_notes` (DEC-18).
+    teachingTopic: text('teaching_topic'),
+    scriptureRef: text('scripture_ref'),
+    activities: jsonb('activities').notNull().default(sql`'{}'::jsonb`),
+    locationText: text('location_text'),
+    atmosphereNotes: text('atmosphere_notes'),
+    followupNeedsText: text('followup_needs_text'),
+    nextWeekPlan: text('next_week_plan'),
+    supportNeededText: text('support_needed_text'),
     summaryNotes: text('summary_notes'),
     prayerRequests: text('prayer_requests'),
     careNeedsNotes: text('care_needs_notes'),
@@ -601,6 +616,8 @@ export const weeklyReports = pgTable(
     submittedByUserId: uuid('submitted_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    // FR-07.6, FR-08.3: set once at the first submit and never changed. `is_late` is decided at that moment and stays.
+    firstSubmittedAt: timestamp('first_submitted_at', { withTimezone: true }),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     supervisorReviewedByUserId: uuid('supervisor_reviewed_by_user_id').references(() => users.id, {
       onDelete: 'set null',
@@ -678,7 +695,7 @@ export const attendanceRecords = pgTable(
     uniqueIndex('attendance_records_report_member_uidx').on(t.weeklyReportId, t.memberId),
     check(
       'attendance_status_chk',
-      sql`${t.attendanceStatus} IN ('present', 'absent', 'excused')`
+      sql`${t.attendanceStatus} IN ('present', 'absent', 'leave', 'online')`
     ),
   ]
 );
@@ -728,11 +745,17 @@ export const followUpItems = pgTable(
     assignedToUserId: uuid('assigned_to_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    // FR-09.1: kind of the item. Automatic kinds carry a dedup key, so the same cause never makes two open items.
+    sourceType: text('source_type').notNull().default('manual'),
+    sourceDedupKey: text('source_dedup_key'),
+    priority: text('priority').notNull().default('normal'),
     title: text('title').notNull(),
     notes: text('notes'),
+    outcomeNote: text('outcome_note'),
     status: text('status').notNull().default('open'),
     dueDate: date('due_date'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    completedByUserId: uuid('completed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     createdByUserId: uuid('created_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -745,6 +768,18 @@ export const followUpItems = pgTable(
       sql`${t.status} IN ('open', 'in_progress', 'completed', 'cancelled')`
     ),
     index('follow_up_group_status_idx').on(t.groupId, t.status),
+    check(
+      'follow_up_source_type_chk',
+      sql`${t.sourceType} IN ('manual', 'absent_2_weeks', 'absent_3plus_weeks', 'visitor_not_returned', 'report_support')`
+    ),
+    check('follow_up_priority_chk', sql`${t.priority} IN ('low', 'normal', 'high')`),
+    check(
+      'follow_up_completed_outcome_chk',
+      sql`${t.status} <> 'completed' OR (${t.outcomeNote} IS NOT NULL AND length(trim(${t.outcomeNote})) > 0)`
+    ),
+    uniqueIndex('follow_up_open_dedup_uidx')
+      .on(t.sourceDedupKey)
+      .where(sql`${t.sourceDedupKey} IS NOT NULL AND ${t.status} IN ('open', 'in_progress')`),
   ]
 );
 

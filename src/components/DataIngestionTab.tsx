@@ -367,7 +367,7 @@ export function DataIngestionTab({
             <button
               type="button"
               onClick={() => setActiveSection('queue')}
-              className={`fm-btn text-sm ${
+              className={`fm-btn text-base ${
                 activeSection === 'queue' ? 'fm-btn-lime' : 'fm-btn-paper'
               }`}
             >
@@ -376,7 +376,7 @@ export function DataIngestionTab({
             <button
               type="button"
               onClick={() => setActiveSection('locations')}
-              className={`fm-btn text-sm ${
+              className={`fm-btn text-base ${
                 activeSection === 'locations' ? 'fm-btn-lime' : 'fm-btn-paper'
               }`}
             >
@@ -387,7 +387,7 @@ export function DataIngestionTab({
                 <button
                   type="button"
                   onClick={() => setActiveSection('mappings')}
-                  className={`fm-btn text-sm ${
+                  className={`fm-btn text-base ${
                     activeSection === 'mappings' ? 'fm-btn-lime' : 'fm-btn-paper'
                   }`}
                 >
@@ -396,7 +396,7 @@ export function DataIngestionTab({
                 <button
                   type="button"
                   onClick={() => setActiveSection('import')}
-                  className={`fm-btn text-sm ${
+                  className={`fm-btn text-base ${
                     activeSection === 'import' ? 'fm-btn-lime' : 'fm-btn-paper'
                   }`}
                 >
@@ -409,25 +409,25 @@ export function DataIngestionTab({
 
         <dl className="mt-5 grid grid-cols-2 gap-3 border-t-2 border-[var(--fm-ink)] pt-4 sm:grid-cols-4">
           <div className="rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-3">
-            <dt className="text-sm font-bold text-[var(--fm-ink-muted)]">รายการรอตรวจสอบ</dt>
+            <dt className="text-base font-bold text-[var(--fm-ink-muted)]">รายการรอตรวจสอบ</dt>
             <dd className="tabular-nums font-display mt-1 text-2xl font-extrabold text-[var(--fm-coral)]">
               {openIssueCount}
             </dd>
           </div>
           <div className="rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-3">
-            <dt className="text-sm font-bold text-[var(--fm-ink-muted)]">กลุ่มรอปักหมุด GPS</dt>
+            <dt className="text-base font-bold text-[var(--fm-ink-muted)]">กลุ่มรอปักหมุด GPS</dt>
             <dd className="tabular-nums font-display mt-1 text-2xl font-extrabold text-[var(--fm-ink)]">
               {overview?.unlocatedGroups.length ?? 0}
             </dd>
           </div>
           <div className="rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-3">
-            <dt className="text-sm font-bold text-[var(--fm-ink-muted)]">พิกัดรอยืนยัน</dt>
+            <dt className="text-base font-bold text-[var(--fm-ink-muted)]">พิกัดรอยืนยัน</dt>
             <dd className="tabular-nums font-display mt-1 text-2xl font-extrabold text-[var(--fm-violet)]">
               {pendingLocationMatches.length}
             </dd>
           </div>
           <div className="rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-3">
-            <dt className="text-sm font-bold text-[var(--fm-ink-muted)]">ชุดข้อมูลรอตรวจ</dt>
+            <dt className="text-base font-bold text-[var(--fm-ink-muted)]">ชุดข้อมูลรอตรวจ</dt>
             <dd className="tabular-nums font-display mt-1 text-2xl font-extrabold text-[var(--fm-emerald)]">
               {overview?.batches.length ?? 0}
             </dd>
@@ -467,7 +467,7 @@ export function DataIngestionTab({
               <button
                 type="button"
                 onClick={() => setIssueFilter('open')}
-                className={`min-h-[44px] rounded-lg border-2 border-[var(--fm-ink)] px-3 text-sm font-bold ${
+                className={`min-h-[48px] rounded-lg border-2 border-[var(--fm-ink)] px-3 text-base font-bold ${
                   issueFilter === 'open'
                     ? 'bg-[var(--fm-ink)] text-[var(--fm-paper)]'
                     : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
@@ -478,7 +478,7 @@ export function DataIngestionTab({
               <button
                 type="button"
                 onClick={() => setIssueFilter('all')}
-                className={`min-h-[44px] rounded-lg border-2 border-[var(--fm-ink)] px-3 text-sm font-bold ${
+                className={`min-h-[48px] rounded-lg border-2 border-[var(--fm-ink)] px-3 text-base font-bold ${
                   issueFilter === 'all'
                     ? 'bg-[var(--fm-ink)] text-[var(--fm-paper)]'
                     : 'bg-[var(--fm-paper)] text-[var(--fm-ink)]'
@@ -502,10 +502,10 @@ export function DataIngestionTab({
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-amber-soft)] px-2.5 py-0.5 text-xs font-extrabold text-[var(--fm-ink)]">
+                      <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-amber-soft)] px-2.5 py-0.5 text-base font-extrabold text-[var(--fm-ink)]">
                         {ISSUE_CODE_LABEL[issue.issueCode] ?? issue.issueCode}
                       </span>
-                      <span className="text-xs font-bold text-[var(--fm-ink-muted)]">
+                      <span className="text-base font-bold text-[var(--fm-ink-muted)]">
                         สถานะ: {ISSUE_STATUS_LABEL[issue.status] ?? issue.status}
                       </span>
                     </div>
@@ -513,7 +513,7 @@ export function DataIngestionTab({
                       {issue.summarySafeText}
                     </p>
                     {issue.resolutionNote && (
-                      <p className="mt-1 text-sm text-[var(--fm-ink-muted)]">
+                      <p className="mt-1 text-base text-[var(--fm-ink-muted)]">
                         บันทึก: {issue.resolutionNote}
                       </p>
                     )}
@@ -524,7 +524,7 @@ export function DataIngestionTab({
                         type="button"
                         disabled={busyAction === issue.id}
                         onClick={() => handleResolveIssue(issue.id, 'approved_fix')}
-                        className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-3.5 text-sm font-extrabold text-[var(--fm-ink)]"
+                        className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-3.5 text-base font-extrabold text-[var(--fm-ink)]"
                       >
                         <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                         <span>อนุมัติ</span>
@@ -533,7 +533,7 @@ export function DataIngestionTab({
                         type="button"
                         disabled={busyAction === issue.id}
                         onClick={() => handleResolveIssue(issue.id, 'deferred')}
-                        className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3.5 text-sm font-bold text-[var(--fm-ink)]"
+                        className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3.5 text-base font-bold text-[var(--fm-ink)]"
                       >
                         <span>พักไว้ก่อน</span>
                       </button>
@@ -541,7 +541,7 @@ export function DataIngestionTab({
                         type="button"
                         disabled={busyAction === issue.id}
                         onClick={() => handleResolveIssue(issue.id, 'rejected')}
-                        className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-coral-soft)] px-3.5 text-sm font-extrabold text-[var(--fm-coral)]"
+                        className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-coral-soft)] px-3.5 text-base font-extrabold text-[var(--fm-coral)]"
                       >
                         <XCircle className="h-4 w-4" aria-hidden="true" />
                         <span>ปฏิเสธ</span>
@@ -559,7 +559,7 @@ export function DataIngestionTab({
             <h2 className="font-display text-xl font-extrabold text-[var(--fm-ink)]">
               พิกัดอ้างอิงรอยืนยัน (จากจุดพันธกิจทีม G)
             </h2>
-            <p className="mt-1 text-sm text-[var(--fm-ink-muted)]">
+            <p className="mt-1 text-base text-[var(--fm-ink-muted)]">
               ระบบจับคู่ชื่อเบื้องต้นให้เท่านั้น ต้องให้ผู้รับผิดชอบกดยืนยันก่อนนำไปปักหมุดจริง
             </p>
             {pendingLocationMatches.length === 0 ? (
@@ -580,7 +580,7 @@ export function DataIngestionTab({
                           จุดอ้างอิง G#{m.candidateNo}: {m.candidateName}
                         </span>
                       </div>
-                      <p className="mt-0.5 font-mono text-sm text-[var(--fm-ink-muted)]">
+                      <p className="mt-0.5 font-mono text-base text-[var(--fm-ink-muted)]">
                         {m.latitude.toFixed(6)}, {m.longitude.toFixed(6)}
                       </p>
                     </div>
@@ -589,7 +589,7 @@ export function DataIngestionTab({
                         type="button"
                         disabled={busyAction === m.id}
                         onClick={() => handleReviewLocation(m.id, 'confirmed')}
-                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-sm font-extrabold text-[var(--fm-ink)]"
+                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-base font-extrabold text-[var(--fm-ink)]"
                       >
                         ยืนยันพิกัดนี้
                       </button>
@@ -597,7 +597,7 @@ export function DataIngestionTab({
                         type="button"
                         disabled={busyAction === m.id}
                         onClick={() => handleReviewLocation(m.id, 'rejected')}
-                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-4 text-sm font-bold text-[var(--fm-coral)]"
+                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-4 text-base font-bold text-[var(--fm-coral)]"
                       >
                         ไม่ใช่จุดนี้
                       </button>
@@ -624,12 +624,12 @@ export function DataIngestionTab({
                     className="flex flex-col justify-between gap-2 py-3 sm:flex-row sm:items-center"
                   >
                     <div>
-                      <div className="flex flex-wrap items-center gap-2 text-sm font-extrabold">
+                      <div className="flex flex-wrap items-center gap-2 text-base font-extrabold">
                         <span className="font-mono text-[var(--fm-violet)]">{g.groupCode}</span>
                         <span className="text-[var(--fm-ink)]">{g.nameTh}</span>
                         <span className="text-[var(--fm-ink-muted)]">อ.{g.district}</span>
                       </div>
-                      <p className="mt-0.5 text-sm text-[var(--fm-ink-secondary)]">
+                      <p className="mt-0.5 text-base text-[var(--fm-ink-secondary)]">
                         {g.addressSummary || 'ยังไม่ระบุสถานที่นัดหมาย'}
                       </p>
                     </div>
@@ -660,7 +660,7 @@ export function DataIngestionTab({
                     className="flex flex-col justify-between gap-3 py-3 sm:flex-row sm:items-center"
                   >
                     <div>
-                      <span className="font-mono text-xs font-extrabold text-[var(--fm-violet)]">
+                      <span className="font-mono text-base font-extrabold text-[var(--fm-violet)]">
                         {g.groupCode} {g.careCodeRaw ? `(${g.careCodeRaw})` : ''}
                       </span>
                       <p className="font-display text-lg font-extrabold text-[var(--fm-ink)]">
@@ -674,7 +674,7 @@ export function DataIngestionTab({
                         onChange={(e) =>
                           setGroupBodySelection((prev) => ({ ...prev, [g.id]: e.target.value }))
                         }
-                        className="min-h-[48px] w-full min-w-0 max-w-full rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-sm font-bold text-[var(--fm-ink)] sm:w-auto"
+                        className="min-h-[48px] w-full min-w-0 max-w-full rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-base font-bold text-[var(--fm-ink)] sm:w-auto"
                       >
                         <option value="">-- เลือกบอดี้ --</option>
                         {(overview?.bodies ?? []).map((b) => (
@@ -699,7 +699,7 @@ export function DataIngestionTab({
                             await onRefreshWorkspace();
                           }
                         }}
-                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-sm font-extrabold text-[var(--fm-ink)]"
+                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-base font-extrabold text-[var(--fm-ink)]"
                       >
                         บันทึกบอดี้
                       </button>
@@ -721,14 +721,14 @@ export function DataIngestionTab({
                   value={districtRawInput}
                   onChange={(e) => setDistrictRawInput(e.target.value)}
                   placeholder="ชื่อดิบ เช่น สหสขันธุ์"
-                  className="min-h-[48px] w-full min-w-0 max-w-full flex-1 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-sm font-bold sm:w-auto"
+                  className="min-h-[48px] w-full min-w-0 max-w-full flex-1 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-base font-bold sm:w-auto"
                 />
                 <input
                   type="text"
                   value={districtCanonInput}
                   onChange={(e) => setDistrictCanonInput(e.target.value)}
                   placeholder="ชื่อมาตรฐาน เช่น สหัสขันธ์"
-                  className="min-h-[48px] w-full min-w-0 max-w-full flex-1 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-sm font-bold sm:w-auto"
+                  className="min-h-[48px] w-full min-w-0 max-w-full flex-1 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-base font-bold sm:w-auto"
                 />
                 <button
                   type="button"
@@ -749,12 +749,12 @@ export function DataIngestionTab({
                       await loadOverview();
                     }
                   }}
-                  className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-sm font-extrabold"
+                  className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-base font-extrabold"
                 >
                   บันทึก
                 </button>
               </div>
-              <ul className="mt-4 space-y-1.5 text-sm font-bold text-[var(--fm-ink)]">
+              <ul className="mt-4 space-y-1.5 text-base font-bold text-[var(--fm-ink)]">
                 {(overview?.districtMappings ?? []).map((m) => (
                   <li key={m.id}>
                     {m.districtRaw} = {m.districtCanonical}
@@ -773,13 +773,13 @@ export function DataIngestionTab({
                   value={careCodeInput}
                   onChange={(e) => setCareCodeInput(e.target.value)}
                   placeholder="รหัสแคร์ เช่น G2"
-                  className="min-h-[48px] w-32 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-sm font-bold"
+                  className="min-h-[48px] w-32 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-base font-bold"
                 />
                 <select
                   aria-label="เลือกบอดี้สำหรับรหัสแคร์"
                   value={careBodyIdInput}
                   onChange={(e) => setCareBodyIdInput(e.target.value)}
-                  className="min-h-[48px] w-full min-w-0 max-w-full flex-1 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-sm font-bold sm:w-auto"
+                  className="min-h-[48px] w-full min-w-0 max-w-full flex-1 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-base font-bold sm:w-auto"
                 >
                   <option value="">-- เลือกบอดี้ --</option>
                   {(overview?.bodies ?? []).map((b) => (
@@ -807,12 +807,12 @@ export function DataIngestionTab({
                       await loadOverview();
                     }
                   }}
-                  className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-sm font-extrabold"
+                  className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-base font-extrabold"
                 >
                   บันทึก
                 </button>
               </div>
-              <ul className="mt-4 space-y-1.5 text-sm font-bold text-[var(--fm-ink)]">
+              <ul className="mt-4 space-y-1.5 text-base font-bold text-[var(--fm-ink)]">
                 {(overview?.careMappings ?? []).map((m) => (
                   <li key={m.id}>
                     {m.careCodeRaw} เข้าบอดี้{' '}
@@ -827,7 +827,7 @@ export function DataIngestionTab({
             <h2 className="font-display text-xl font-extrabold text-[var(--fm-ink)]">
               ผูกบัญชีผู้ดูแลที่ยังไม่มี User ({overview?.unlinkedStewards.length ?? 0})
             </h2>
-            <p className="mt-1 text-sm text-[var(--fm-ink-muted)]">
+            <p className="mt-1 text-base text-[var(--fm-ink-muted)]">
               ผู้ดูแลที่นำเข้าจากรายชื่อจริงสามารถมีบทบาทได้ก่อนมีบัญชีผู้ใช้ และผูกกับ User เมื่อพร้อมเข้าสู่ระบบ
             </p>
             {(overview?.unlinkedStewards.length ?? 0) === 0 ? (
@@ -845,7 +845,7 @@ export function DataIngestionTab({
                       <p className="font-bold text-[var(--fm-ink)]">
                         {st.stewardDisplayName ?? 'ไม่ระบุชื่อผู้ดูแล'}
                       </p>
-                      <p className="text-sm font-bold text-[var(--fm-ink-muted)]">
+                      <p className="text-base font-bold text-[var(--fm-ink-muted)]">
                         บทบาท: {st.roleType} — สถานะ: {LINK_STATUS_LABEL[st.linkStatus] ?? st.linkStatus}
                       </p>
                     </div>
@@ -859,7 +859,7 @@ export function DataIngestionTab({
                             [st.id]: e.target.value,
                           }))
                         }
-                        className="min-h-[48px] w-full min-w-0 max-w-full rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-sm font-bold text-[var(--fm-ink)] sm:w-auto"
+                        className="min-h-[48px] w-full min-w-0 max-w-full rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-3 text-base font-bold text-[var(--fm-ink)] sm:w-auto"
                       >
                         <option value="">-- เลือกบัญชีผู้ใช้ --</option>
                         {(overview?.linkableUsers ?? []).map((u) => (
@@ -884,7 +884,7 @@ export function DataIngestionTab({
                             await onRefreshWorkspace();
                           }
                         }}
-                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-sm font-extrabold text-[var(--fm-ink)]"
+                        className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-base font-extrabold text-[var(--fm-ink)]"
                       >
                         ผูกบัญชี
                       </button>
@@ -901,7 +901,7 @@ export function DataIngestionTab({
             <h2 className="font-display text-xl font-extrabold text-[var(--fm-ink)]">
               นำเข้าข้อมูลกลุ่มและสมาชิก
             </h2>
-            <p className="mt-1 text-sm text-[var(--fm-ink-muted)]">
+            <p className="mt-1 text-base text-[var(--fm-ink-muted)]">
               วางข้อมูลชุดนำเข้า (JSON) เพื่อตรวจความถูกต้องก่อนบันทึกเข้าคิวตรวจสอบ
             </p>
             <textarea
@@ -909,7 +909,7 @@ export function DataIngestionTab({
               value={rawJsonText}
               onChange={(e) => setRawJsonText(e.target.value)}
               placeholder='{"sourceArchiveName": "kalasin-pack.json", "groups": [...], "members": [...]}'
-              className="mt-3 w-full max-w-full min-w-0 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-3 font-mono text-sm text-[var(--fm-ink)]"
+              className="mt-3 w-full max-w-full min-w-0 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-3 font-mono text-base text-[var(--fm-ink)]"
             />
             <div className="mt-3 flex flex-wrap gap-3">
               <button
@@ -938,7 +938,7 @@ export function DataIngestionTab({
                   <AlertTriangle className="h-5 w-5" aria-hidden="true" />
                   <span>ผลตรวจสอบตัวอย่าง: {preview.sourceArchiveName}</span>
                 </div>
-                <ul className="mt-2 grid gap-1.5 text-sm font-bold text-[var(--fm-ink)] sm:grid-cols-2">
+                <ul className="mt-2 grid gap-1.5 text-base font-bold text-[var(--fm-ink)] sm:grid-cols-2">
                   <li>กลุ่มทั้งหมด: {preview.totalGroups}</li>
                   <li>แถวสมาชิก: {preview.totalMemberRows}</li>
                   <li>สมาชิกไม่มีชื่อจริง: {preview.missingFullNameCount}</li>
@@ -968,14 +968,14 @@ export function DataIngestionTab({
                     <div>
                       <div className="flex items-center gap-2">
                         <Database className="h-4 w-4 text-[var(--fm-violet)]" aria-hidden="true" />
-                        <span className="font-mono text-sm font-extrabold text-[var(--fm-ink)]">
+                        <span className="font-mono text-base font-extrabold text-[var(--fm-ink)]">
                           {b.batchCode}
                         </span>
-                        <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-2 py-0.5 text-xs font-bold">
+                        <span className="rounded-md border border-[var(--fm-ink)] bg-[var(--fm-canvas)] px-2 py-0.5 text-base font-bold">
                           {BATCH_STATUS_LABEL[b.status] ?? b.status}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm text-[var(--fm-ink-secondary)]">
+                      <p className="mt-1 text-base text-[var(--fm-ink-secondary)]">
                         {b.sourceArchiveName}
                       </p>
                     </div>
@@ -985,7 +985,7 @@ export function DataIngestionTab({
                           type="button"
                           disabled={busyAction === `promote-${b.id}`}
                           onClick={() => handlePromote(b.id)}
-                          className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-sm font-extrabold text-[var(--fm-ink)]"
+                          className="min-h-[48px] rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-lime)] px-4 text-base font-extrabold text-[var(--fm-ink)]"
                         >
                           อนุมัติเข้าทะเบียนจริง
                         </button>
@@ -995,7 +995,7 @@ export function DataIngestionTab({
                           type="button"
                           disabled={busyAction === `rollback-${b.id}`}
                           onClick={() => handleRollback(b.id)}
-                          className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3.5 text-sm font-bold text-[var(--fm-coral)]"
+                          className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3.5 text-base font-bold text-[var(--fm-coral)]"
                         >
                           <RotateCcw className="h-4 w-4" aria-hidden="true" />
                           <span>ยกเลิกชุดข้อมูลนี้</span>

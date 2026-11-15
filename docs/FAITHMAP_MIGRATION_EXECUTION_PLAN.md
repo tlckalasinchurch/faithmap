@@ -15,8 +15,9 @@ This document holds no password or connection string. Evidence marks are the sam
 | 2 | `0002_data_quality_decisions.sql` | 17 | 058492b072 | 1 table, 3 indexes, 3 foreign keys |
 | 3 | `0003_data_quality_decisions_immutable.sql` | 28 | f0ee434552 | 1 function, 2 triggers |
 | 4 | `0004_team_field_points_scope.sql` | 9 | 54b4e67a88 | 4 nullable columns, 3 foreign keys, 2 indexes on `team_field_points` |
+| 5 | `0005_report_content_followups_attendance.sql` | 25 | d1b0777b9b | Report content columns (FR-07.2); follow-up kinds, dedup key, priority, outcome note; visitor lifecycle status; attendance statuses `present/absent/leave/online`. Two data steps (see addendum 2) |
 
-Result after all five: **38 tables, 3 functions, 5 triggers**, plus the Drizzle history table `drizzle.__drizzle_migrations`.
+Result after all six: **38 tables, 3 functions, 5 triggers**, plus the Drizzle history table `drizzle.__drizzle_migrations`.
 
 ## 2. Safety review of the 4 migrations
 
@@ -39,7 +40,7 @@ Result after all five: **38 tables, 3 functions, 5 triggers**, plus the Drizzle 
 - `CONNECT` and `CREATE` on the database. Drizzle runs `CREATE SCHEMA IF NOT EXISTS drizzle`. I granted `CREATE` for this reason. I did not test the migration without it.
 - `USAGE` and `CREATE` on schema `public`.
 
-Evidence: the migrator, with no other right, ran all 4 migrations on PG16 (TCP login) and on PG18.6 (PGlite). Result `migrations=5/5`.
+Evidence: the migrator, with no other right, ran all 4 migrations on PG16 (TCP login) and on PG18.6 (PGlite). Result `migrations=6/6`.
 Do **not** run the migration as `neondb_owner`. Tables would belong to `neondb_owner`. The runtime role design needs the migrator to own them.
 Do **not** run it as `faithmap_app`. That role has no DDL rights, by design.
 
@@ -90,7 +91,7 @@ Every step needs owner approval first. The owner runs steps that use a password.
 |---|---|---|---|---|
 | 1 | RED | Owner | Run `01_owner_roles_and_schemas.sql` as `neondb_owner` (direct host) | No error. Two new roles |
 | 2 | RED | Owner | Run `02_migrator_default_privileges.sql` as `faithmap_migrator` | No error. Schema `drizzle` exists |
-| 3 | RED | Owner | Run the migration (section 6.1) | `FaithMap schema ready (driver=postgres, migrations=5/5).` |
+| 3 | RED | Owner | Run the migration (section 6.1) | `FaithMap schema ready (driver=postgres, migrations=6/6).` |
 | 4 | RED | Owner | Run `03_post_migrate_grants.sql` as `faithmap_migrator` | No error |
 | 5 | GREEN | Owner or Claude | Run `04_verify_roles.sql` | 10 rows, all `t` |
 | 6 | GREEN | Owner or Claude | Run the content check (section 6.2) | Numbers match the table |
@@ -118,9 +119,9 @@ Rules:
 
 ```sql
 SELECT 'public_tables'      AS check, count(*)::text AS value, '38' AS expected FROM pg_tables WHERE schemaname = 'public'
-UNION ALL SELECT 'migrations',        count(*)::text, '5'   FROM drizzle."__drizzle_migrations"
-UNION ALL SELECT 'indexes',           count(*)::text, '114' FROM pg_indexes WHERE schemaname = 'public'
-UNION ALL SELECT 'constraints (not NOT NULL)', count(*)::text, '186'
+UNION ALL SELECT 'migrations',        count(*)::text, '6'   FROM drizzle."__drizzle_migrations"
+UNION ALL SELECT 'indexes',           count(*)::text, '115' FROM pg_indexes WHERE schemaname = 'public'
+UNION ALL SELECT 'constraints (not NOT NULL)', count(*)::text, '191'
   FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype <> 'n'
 UNION ALL SELECT 'triggers',          count(*)::text, '5'   FROM pg_trigger WHERE NOT tgisinternal
 UNION ALL SELECT 'functions',         count(*)::text, '3'   FROM pg_proc WHERE pronamespace = 'public'::regnamespace
@@ -183,7 +184,7 @@ Not tested: rollback on Neon.
 
 ## Addendum: migration 0004 (prepared, not run)
 
-The plan above now covers five migrations (0000 to 0004). Expected values after step 3, measured on a scratch database with all five applied: 38 tables, 5 migration rows, 114 indexes, 186 constraints that are not NOT NULL (85 are foreign keys), 5 triggers, 3 functions. The inventory in section 1 lists all five files. Section 2 was written for the first four. Section 2 for `0004` is the table below.
+The plan above now covers six migrations (0000 to 0005). Expected values after step 3, measured on a scratch database with all six applied: 38 tables, 6 migration rows, 115 indexes, 191 constraints that are not NOT NULL (86 are foreign keys), 5 triggers, 3 functions. The inventory in section 1 lists all six files. Section 2 was written for the first four. Section 2 for `0004` is the table below.
 
 File: `drizzle/0004_team_field_points_scope.sql`. Owner decision Q-8 (2026-11-15).
 
@@ -198,3 +199,18 @@ File: `drizzle/0004_team_field_points_scope.sql`. Owner decision Q-8 (2026-11-15
 | Mapping gate | No non-admin reads any point while one point has `body_id` NULL |
 | Rollback | Before any mapping: `ALTER TABLE team_field_points DROP COLUMN` for the four columns (drops indexes and keys). After mapping, the links are lost. Take a Neon branch restore point first |
 | Verification | After Y6: count columns, count NULL rows (all rows), confirm a non-admin gets 403 |
+
+
+## Addendum 2: migration 0005 (prepared, not run)
+
+File: `drizzle/0005_report_content_followups_attendance.sql`. Reason: the approved PRD requires report content fields (FR-07.2), automatic follow-ups (FR-06.4, FR-05.4), an outcome on completed items (FR-09.2), a visitor lifecycle (FR-05.3) and the attendance statuses `present`, `absent`, `leave`, `online` (FR-06.1).
+
+| Item | Value |
+|---|---|
+| Schema change | 8 nullable or defaulted content columns on `weekly_reports` (`teaching_topic`, `scripture_ref`, `activities`, `location_text`, `atmosphere_notes`, `followup_needs_text`, `next_week_plan`, `support_needed_text`), 5 columns on `follow_up_items` (`source_type`, `source_dedup_key`, `priority`, `outcome_note`, `completed_by_user_id`), 1 column on `visitors` (`followup_status`), 1 foreign key, 1 partial unique index (`follow_up_open_dedup_uidx`), 4 new check constraints, 1 check constraint replaced (`attendance_status_chk`) |
+| Data steps | (1) `UPDATE attendance_records SET attendance_status = 'leave' WHERE attendance_status = 'excused'`. (2) `UPDATE follow_up_items SET outcome_note = <marker text>` for completed items with no outcome. Both run before the new checks. On an empty database both change 0 rows |
+| Destructive | No DROP of a table or column, no DELETE, no TRUNCATE. One constraint is dropped and added again with a wider value list |
+| Order | Needs 0000 to 0004 first. Runs in the same Y6 step |
+| Rollback | Before any data: drop the new columns, constraints and index, and restore the old attendance check. After data: the `excused` to `leave` step is not reversible by SQL alone; use the restore point |
+| Verification | Step 6.2 counts (above). Then `SELECT count(*)` on `attendance_records` where status is `excused` must be 0 |
+| Not tested | Execution on Neon. The data steps were tested on PGlite and PostgreSQL 16 only as text order and on an empty database; no test applies them to old rows |

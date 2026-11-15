@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, max } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
   assignments,
@@ -214,6 +214,93 @@ export async function listGroupsWithContext(
       currentReport: reportSummary,
     };
   });
+}
+
+/**
+ * FR-01.2: an admin creates a Body. Production starts with no Body, so this is the first step of setup.
+ * The code is stored in upper case and is unique.
+ */
+export async function createBody(
+  db: FaithMapDb,
+  actor: ActorContext,
+  input: { code: string; nameTh: string; nameEn?: string | null; province?: string | null }
+) {
+  if (!isAdmin(actor)) {
+    throw new AppError(403, 'ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่สร้างบอดี้ได้');
+  }
+  const [topRow] = await db.select({ top: max(bodies.sortOrder) }).from(bodies);
+  const top = topRow?.top ?? 0;
+  let created: typeof bodies.$inferSelect | undefined;
+  try {
+    [created] = await db
+      .insert(bodies)
+      .values({
+        code: input.code.trim().toUpperCase(),
+        nameTh: input.nameTh.trim(),
+        nameEn: input.nameEn?.trim() || null,
+        ...(input.province?.trim() ? { province: input.province.trim() } : {}),
+        status: 'active',
+        sortOrder: top + 1,
+      })
+      .returning();
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new AppError(409, 'BODY_CODE_EXISTS', 'มีรหัสบอดี้นี้อยู่ในระบบแล้ว');
+    throw err;
+  }
+  await recordSecurityAudit(db, {
+    actorUserId: actor.user.id,
+    action: 'body_created',
+    targetType: 'body',
+    targetId: created!.id,
+    metadata: { code: created!.code },
+  });
+  return created!;
+}
+
+/**
+ * FR-01.2, FR-01.3: rename a Body or change its status. A Body is never deleted.
+ * A Body with an active group cannot be set to inactive or archived: move the groups first (transfer),
+ * otherwise their reports would have no approver. The change is audited.
+ */
+export async function updateBody(
+  db: FaithMapDb,
+  actor: ActorContext,
+  bodyId: string,
+  patch: { nameTh?: string; nameEn?: string | null; status?: 'active' | 'inactive' | 'archived' }
+) {
+  if (!isAdmin(actor)) {
+    throw new AppError(403, 'ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่แก้ไขบอดี้ได้');
+  }
+  const [body] = await db.select().from(bodies).where(eq(bodies.id, bodyId));
+  if (!body) throw new AppError(404, 'BODY_NOT_FOUND', 'ไม่พบบอดี้ที่ระบุ');
+  if (patch.status && patch.status !== 'active' && body.status === 'active') {
+    const active = await db
+      .select({ id: houseMissionGroups.id })
+      .from(houseMissionGroups)
+      .where(and(eq(houseMissionGroups.bodyId, bodyId), eq(houseMissionGroups.status, 'active')))
+      .limit(1);
+    if (active.length > 0) {
+      throw new AppError(409, 'BODY_HAS_ACTIVE_GROUPS', 'บอดี้นี้ยังมีกลุ่มที่ใช้งานอยู่ กรุณาย้ายกลุ่มไปบอดี้อื่นก่อน');
+    }
+  }
+  const [updated] = await db
+    .update(bodies)
+    .set({
+      ...(patch.nameTh !== undefined ? { nameTh: patch.nameTh.trim() } : {}),
+      ...(patch.nameEn !== undefined ? { nameEn: patch.nameEn?.trim() || null } : {}),
+      ...(patch.status ? { status: patch.status } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(bodies.id, bodyId))
+    .returning();
+  await recordSecurityAudit(db, {
+    actorUserId: actor.user.id,
+    action: 'body_updated',
+    targetType: 'body',
+    targetId: bodyId,
+    metadata: { fromStatus: body.status, toStatus: updated!.status },
+  });
+  return updated!;
 }
 
 export async function createGroup(

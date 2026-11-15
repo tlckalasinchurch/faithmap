@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api-client';
 import type { AssignmentRole, WorkspacePayload } from '@/lib/types';
+import { BodyManagementPanel } from './BodyManagementPanel';
 
 export function GovernanceTab({
   workspace,
@@ -90,6 +91,8 @@ export function GovernanceTab({
         </div>
       )}
 
+      <BodyManagementPanel workspace={workspace} onRefresh={onRefresh} />
+
       {/* Bodies Health Ledger */}
       <section className="fm-panel grid divide-y-2 divide-[#141413] overflow-hidden md:grid-cols-2 md:divide-x-2 md:divide-y-0">
         {workspace.bodies.map((b) => (
@@ -99,7 +102,7 @@ export function GovernanceTab({
                 <h2 className="font-display text-2xl font-extrabold text-[#141413]">
                   {b.nameTh}
                 </h2>
-                <span className="mt-1 inline-block rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-xs font-bold text-[#141413]">
+                <span className="mt-1 inline-block rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-base font-bold text-[#141413]">
                   {b.code}
                 </span>
               </div>
@@ -120,7 +123,7 @@ export function GovernanceTab({
               {b.bodyLeaders.map((l) => (
                 <div
                   key={l.assignmentId}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm font-bold text-[#141413]"
+                  className="flex items-center justify-between px-4 py-2.5 text-base font-bold text-[#141413]"
                 >
                   <span>
                     {l.displayName} ({l.accountStatus})
@@ -145,7 +148,7 @@ export function GovernanceTab({
                           'ถอดถอนตำแหน่งระดับบอดี้เรียบร้อย'
                         );
                       }}
-                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-xs ${
+                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-base ${
                         confirmKey === `revoke:${l.assignmentId}`
                           ? 'bg-[var(--fm-coral)] text-[var(--fm-paper)]'
                           : 'bg-[#FFE4E6] text-[#881337]'
@@ -432,7 +435,7 @@ export function GovernanceTab({
                     <div className="text-base font-extrabold text-[#141413]">
                       {u.displayName}
                     </div>
-                    <div className="font-mono text-xs font-bold text-[#27272A]">
+                    <div className="font-mono text-base font-bold text-[#27272A]">
                       @{u.username} · {u.systemRole} · {u.status}
                     </div>
                   </div>
@@ -457,7 +460,7 @@ export function GovernanceTab({
                           `อัปเดตสถานะบัญชี ${u.username} แล้ว`
                         );
                       }}
-                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-sm ${
+                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-base ${
                         confirmKey === `user:${u.id}`
                           ? 'bg-[var(--fm-coral)] text-[var(--fm-paper)]'
                           : u.status === 'active'
@@ -485,7 +488,7 @@ export function GovernanceTab({
               <ShieldCheck className="h-5 w-5 text-[#C8FF00]" aria-hidden="true" />
             </div>
 
-            <div className="max-h-[380px] divide-y-2 divide-[#141413] overflow-y-auto font-mono text-xs">
+            <div className="max-h-[380px] divide-y-2 divide-[#141413] overflow-y-auto font-mono text-base">
               {workspace.securityLogs.map((log) => (
                 <div key={log.id} className="bg-white px-6 py-3 text-[#141413]">
                   <div className="font-bold">

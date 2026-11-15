@@ -237,7 +237,7 @@ export function FaithMapApp() {
               <Sparkles className="h-5 w-5" aria-hidden="true" />
               <span>FaithMap</span>
             </span>
-            <span className="hidden rounded-full border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1 text-xs font-bold text-[#F0F4F8] sm:inline-block">
+            <span className="hidden rounded-full border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1 text-base font-bold text-[#F0F4F8] sm:inline-block">
               พันธกิจบ้าน จ.กาฬสินธุ์ ({workspace.overview.selectedPeriod.periodKey})
             </span>
           </div>
@@ -248,7 +248,7 @@ export function FaithMapApp() {
                 aria-label="สลับบทบาทผู้ใช้งานทดสอบ"
                 value={workspace.actor.user.id}
                 onChange={(e) => handleDemoSwitch(e.target.value)}
-                className="min-h-[48px] max-w-[260px] rounded-xl border-2 border-[#C8FF00] bg-[#27272A] px-3 text-sm font-bold text-[#F0F4F8]"
+                className="min-h-[48px] max-w-[260px] rounded-xl border-2 border-[#C8FF00] bg-[#27272A] px-3 text-base font-bold text-[#F0F4F8]"
               >
                 {auth.demoAccounts.map((acc) => (
                   <option key={acc.id} value={acc.id} className="bg-[#141413] text-[#F0F4F8]">
@@ -266,7 +266,7 @@ export function FaithMapApp() {
             >
               <Bell className="h-5 w-5" aria-hidden="true" />
               {unreadCount > 0 && (
-                <span className="ml-1.5 rounded-full border border-[#141413] bg-[#C8FF00] px-2 py-0.5 text-xs font-extrabold text-[#141413]">
+                <span className="ml-1.5 rounded-full border border-[#141413] bg-[#C8FF00] px-2 py-0.5 text-base font-extrabold text-[#141413]">
                   {unreadCount}
                 </span>
               )}
@@ -275,7 +275,7 @@ export function FaithMapApp() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-3.5 text-sm font-bold text-[#F0F4F8] transition hover:bg-[#BE123C]"
+              className="inline-flex min-h-[48px] items-center gap-1.5 rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-3.5 text-base font-bold text-[#F0F4F8] transition hover:bg-[#BE123C]"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
               <span className="hidden sm:inline">ออก</span>
@@ -298,7 +298,7 @@ export function FaithMapApp() {
                     key={item.id}
                     type="button"
                     onClick={() => navigateTab(item.id)}
-                    className={`flex min-h-[48px] shrink-0 items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition ${
+                    className={`flex min-h-[48px] shrink-0 items-center gap-2 rounded-xl border-2 px-3 py-2 text-base font-extrabold transition ${
                       isActive
                         ? 'border-[#141413] bg-[#C8FF00] text-[#141413] shadow-[3px_3px_0px_#1D4ED8]'
                         : 'border-[#27272A] bg-[#27272A] text-[#F0F4F8] hover:border-[#C8FF00]'
@@ -312,7 +312,7 @@ export function FaithMapApp() {
             </nav>
 
             <div className="hidden items-center gap-2 xl:flex">
-              <span className="rounded-lg border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1.5 text-xs font-bold text-[#F0F4F8]">
+              <span className="rounded-lg border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1.5 text-base font-bold text-[#F0F4F8]">
                 {workspace.actor.user.displayName}
               </span>
             </div>
@@ -416,7 +416,7 @@ export function FaithMapApp() {
                 key={`bottom-${item.id}`}
                 type="button"
                 onClick={() => navigateTab(item.id)}
-                className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-extrabold ${
+                className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-base font-extrabold ${
                   isActive
                     ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
                     : 'text-[var(--fm-paper)]'
@@ -447,7 +447,7 @@ export function FaithMapApp() {
                 <h2 className="font-display text-xl font-extrabold text-[#141413]">
                   กล่องแจ้งเตือน
                 </h2>
-                <p className="text-xs font-bold text-[#141413]">
+                <p className="text-base font-bold text-[#141413]">
                   แจ้งเตือนในระบบและ LINE OA
                 </p>
               </div>
@@ -466,7 +466,7 @@ export function FaithMapApp() {
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
-                  className="fm-btn fm-btn-violet w-full text-sm"
+                  className="fm-btn fm-btn-violet w-full text-base"
                 >
                   <CheckCheck className="h-4 w-4" />
                   <span>ทำเครื่องหมายว่าอ่านแล้วทั้งหมด ({unreadCount})</span>
@@ -490,8 +490,8 @@ export function FaithMapApp() {
                     }`}
                   >
                     <div className="text-base font-extrabold">{n.title}</div>
-                    <p className="mt-1 text-sm font-medium">{n.body}</p>
-                    <p className="mt-1.5 font-mono text-xs font-bold text-[#27272A]">
+                    <p className="mt-1 text-base font-medium">{n.body}</p>
+                    <p className="mt-1.5 font-mono text-base font-bold text-[#27272A]">
                       {new Date(n.createdAt).toLocaleString('th-TH')}
                     </p>
                   </div>

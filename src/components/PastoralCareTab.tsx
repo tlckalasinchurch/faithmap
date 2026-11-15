@@ -13,6 +13,23 @@ import { apiRequest } from '@/lib/api-client';
 import { normalizeThaiPhone } from '@/lib/phone';
 import type { WorkspacePayload } from '@/lib/types';
 
+const SOURCE_TH: Record<string, string> = {
+  manual: 'สร้างเอง',
+  absent_2_weeks: 'ขาดประชุม 2 สัปดาห์',
+  absent_3plus_weeks: 'ขาดประชุม 3 สัปดาห์ขึ้นไป',
+  visitor_not_returned: 'ผู้เยี่ยมยังไม่กลับมา',
+  report_support: 'ขอความช่วยเหลือจากรายงาน',
+};
+
+const VISITOR_STATUS_TH: Record<string, string> = {
+  first_visit: 'มาครั้งแรก',
+  awaiting_followup: 'รอติดตาม',
+  contacted: 'ติดต่อแล้ว',
+  returned: 'กลับมาแล้ว',
+  ongoing_care: 'ดูแลต่อเนื่อง',
+  completed: 'ดูแลครบแล้ว',
+};
+
 export function PastoralCareTab({
   workspace,
   onRefresh,
@@ -92,9 +109,13 @@ export function PastoralCareTab({
     }
   }
 
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [outcomeText, setOutcomeText] = useState('');
+
   async function handleFollowUpStatus(
     followUpId: string,
-    status: 'open' | 'in_progress' | 'completed'
+    status: 'open' | 'in_progress' | 'completed',
+    outcomeNote?: string
   ) {
     setBusy(true);
     setMsg(null);
@@ -105,8 +126,11 @@ export function PastoralCareTab({
           action: 'update_follow_up',
           followUpId,
           status,
+          ...(outcomeNote !== undefined ? { outcomeNote } : {}),
         },
       });
+      setCompletingId(null);
+      setOutcomeText('');
       await onRefresh();
     } catch (err) {
       setMsg({
@@ -232,9 +256,35 @@ export function PastoralCareTab({
             >
               <div>
                 <div className="text-base font-extrabold text-[#141413]">{f.title}</div>
-                <div className="text-sm font-medium text-[#27272A]">
-                  {f.groupName} {f.notes ? `· ${f.notes}` : ''}
+                <div className="text-base font-medium text-[#27272A]">
+                  {f.groupName} · {SOURCE_TH[f.sourceType] ?? 'ทั่วไป'}
+                  {f.priority === 'high' ? ' · ด่วน' : ''} {f.notes ? `· ${f.notes}` : ''}
                 </div>
+                {f.status === 'completed' && f.outcomeNote && (
+                  <div className="text-base font-medium text-[#27272A]">ผลการติดตาม: {f.outcomeNote}</div>
+                )}
+                {completingId === f.id && (
+                  <div className="mt-3 space-y-2">
+                    <label className="block text-lg font-bold text-[#141413]" htmlFor={`outcome-${f.id}`}>
+                      ผลการติดตาม (จำเป็นต้องกรอก)
+                    </label>
+                    <textarea
+                      id={`outcome-${f.id}`}
+                      className="fm-input min-h-[96px] w-full text-lg"
+                      maxLength={2000}
+                      value={outcomeText}
+                      onChange={(e) => setOutcomeText(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={busy || outcomeText.trim().length === 0}
+                      onClick={() => handleFollowUpStatus(f.id, 'completed', outcomeText.trim())}
+                      className="fm-btn fm-btn-lime min-h-[48px] px-4 text-lg"
+                    >
+                      บันทึกผลและปิดรายการ
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {f.status !== 'completed' ? (
@@ -244,7 +294,7 @@ export function PastoralCareTab({
                         type="button"
                         disabled={busy}
                         onClick={() => handleFollowUpStatus(f.id, 'in_progress')}
-                        className="fm-btn bg-[#DBEAFE] px-3.5 py-1.5 text-sm text-[#141413]"
+                        className="fm-btn bg-[#DBEAFE] px-3.5 py-1.5 text-base text-[#141413]"
                       >
                         <span>กำลังติดตาม</span>
                       </button>
@@ -252,8 +302,11 @@ export function PastoralCareTab({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => handleFollowUpStatus(f.id, 'completed')}
-                      className="fm-btn fm-btn-lime px-4 py-1.5 text-sm"
+                      onClick={() => {
+                        setCompletingId(f.id);
+                        setOutcomeText('');
+                      }}
+                      className="fm-btn fm-btn-lime px-4 py-1.5 text-base"
                     >
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                       <span>เยี่ยมสำเร็จ</span>
@@ -288,9 +341,10 @@ export function PastoralCareTab({
               >
                 <div>
                   <div className="text-base font-extrabold text-[#141413]">{v.fullName}</div>
-                  <div className="text-sm font-medium text-[#27272A]">
+                  <div className="text-base font-medium text-[#27272A]">
                     {v.originGroupName} · โทร: {v.phone ?? 'ไม่ระบุ'} · PDPA:{' '}
-                    {v.consentForContact ? 'ยินยอมแล้ว' : 'ยังไม่ให้เบอร์'}
+                    {v.consentForContact ? 'ยินยอมแล้ว' : 'ยังไม่ให้เบอร์'} · มา {v.visitCount} ครั้ง ·{' '}
+                    {VISITOR_STATUS_TH[v.followupStatus] ?? v.followupStatus}
                   </div>
                 </div>
                 {v.convertedMemberId ? (
@@ -303,7 +357,7 @@ export function PastoralCareTab({
                       type="button"
                       disabled={busy}
                       onClick={() => handleConvertVisitor(v.id, v.firstOriginGroupId)}
-                      className="fm-btn fm-btn-paper px-3.5 py-1.5 text-sm"
+                      className="fm-btn fm-btn-paper px-3.5 py-1.5 text-base"
                     >
                       <span>รับเป็นสมาชิกกลุ่ม</span>
                     </button>
@@ -330,7 +384,7 @@ export function PastoralCareTab({
               >
                 <div>
                   <div className="text-base font-extrabold text-[#141413]">{m.fullName}</div>
-                  <div className="text-sm font-medium text-[#27272A]">
+                  <div className="text-base font-medium text-[#27272A]">
                     {m.groupName} · โทร: {m.phone ?? '-'}
                   </div>
                 </div>

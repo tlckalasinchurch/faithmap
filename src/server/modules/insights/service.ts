@@ -24,6 +24,7 @@ import {
 import { dispatchNotification } from '../notifications/service';
 import type { ActorContext } from '../identity/service';
 import { ensureActiveReportingPeriod } from '../reporting/service';
+import { getBangkokParts } from '../time/bangkok';
 import {
   BRIEF_SCHEMA_VERSION,
   actionDecisionLines,
@@ -536,6 +537,44 @@ export async function exportScopedCsvData(
     filename: `faithmap-visitors-${new Date().toISOString().slice(0, 10)}.csv`,
     csv: `\uFEFF${[header, ...lines].join('\r\n')}`,
   };
+}
+
+/**
+ * PRD section 2.2 step 1 and FR-11.2: Saturday and Sunday reminder before the deadline.
+ * It runs only on Saturday and Sunday (Asia/Bangkok), only while the period is open and before the deadline,
+ * and only for expected groups that have no submitted report. One in-app notification per group and per day
+ * (the dedupe key). A scheduler must call it (open decision B-2); the job route is `send_reminders`.
+ */
+export async function executeReminderJob(db: FaithMapDb, now: Date = new Date()) {
+  const parts = getBangkokParts(now);
+  if (parts.isoWeekday !== 6 && parts.isoWeekday !== 7) return { checkedAt: now.toISOString(), remindersSent: 0, skipped: 'not_weekend' as const };
+  const [period] = await db
+    .select()
+    .from(reportingPeriods)
+    .where(and(eq(reportingPeriods.status, 'open')))
+    .limit(1);
+  if (!period || now.getTime() >= period.deadlineAt.getTime() || parts.isoDate < period.startDate || parts.isoDate > period.endDate) {
+    return { checkedAt: now.toISOString(), remindersSent: 0, skipped: 'no_open_period' as const };
+  }
+  const snapshots = await db.select().from(periodGroupSnapshots).where(eq(periodGroupSnapshots.periodId, period.id));
+  const reports = await db.select().from(weeklyReports).where(eq(weeklyReports.periodId, period.id));
+  const submitted = new Set(reports.filter((r) => r.status !== 'draft').map((r) => r.groupId));
+  let remindersSent = 0;
+  for (const snap of snapshots) {
+    if (!snap.expectedReport || submitted.has(snap.groupId) || !snap.primaryGroupLeaderUserId) continue;
+    await dispatchNotification(db, {
+      userId: snap.primaryGroupLeaderUserId,
+      category: 'deadline_reminder',
+      title: `ใกล้ครบกำหนดส่งรายงาน: ${snap.groupNameSnapshot}`,
+      body: 'กรุณาส่งรายงานก่อนวันอาทิตย์ 20:00 น.',
+      relatedEntityType: 'reporting_period',
+      relatedEntityId: period.id,
+      dedupeKey: `reminder:${period.id}:${snap.groupId}:${parts.isoDate}`,
+      sendLine: true,
+    });
+    remindersSent += 1;
+  }
+  return { checkedAt: now.toISOString(), remindersSent };
 }
 
 export async function executeCutoffCheckJob(db: FaithMapDb, now: Date = new Date()) {

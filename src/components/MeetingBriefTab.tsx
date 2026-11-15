@@ -120,7 +120,7 @@ export function MeetingBriefTab({
             <button
               type="button"
               onClick={handleCopySummary}
-              className="fm-btn fm-btn-paper text-sm"
+              className="fm-btn fm-btn-paper text-base"
             >
               {copied ? (
                 <Check className="h-4 w-4 text-[#047857]" aria-hidden="true" />
@@ -167,7 +167,7 @@ export function MeetingBriefTab({
               <h2 className="font-display text-2xl font-extrabold text-[#141413]">
                 หัวข้อที่ 1 · ภาพรวม: {String(s.section1Overview ?? brief.periodKey)}
               </h2>
-              <p className="font-mono text-sm font-bold text-[#27272A]">
+              <p className="font-mono text-base font-bold text-[#27272A]">
                 สร้างเมื่อ {new Date(brief.generatedAt).toLocaleString('th-TH')}
               </p>
             </div>

@@ -16,7 +16,7 @@ Sources: `FAITHMAP_DATABASE_ROLE_DESIGN.md` (SQL 01 to 07), `FAITHMAP_MIGRATION_
 | Vercel Node setting | 26.x. `engines.node` in the branch is 22.x | `get_project` |
 | Vercel Authentication | Blocks anonymous access to Preview. LINE users cannot pass it | Compatibility document, section 4 |
 | Code | PR #1 draft, head `45cf05c`, CI passed | GitHub |
-| Migrations | Five files, 0000 to 0004. Tested on PGlite 18.6 and PostgreSQL 16.15 | Test report |
+| Migrations | Five files, 0000 to 0005. Tested on PGlite 18.6 and PostgreSQL 16.15 | Test report |
 
 ## 2. Decisions the owner must make before approval
 
@@ -97,14 +97,14 @@ Rules: never "All Environments". Never Production. Do not set `PG*`, `FAITHMAP_D
 | Order inside Y5 | Set all except `APP_BASE_URL`. Redeploy. Read the real alias. Set `APP_BASE_URL`. Redeploy again |
 | Note on LIFF | Vercel Authentication blocks LINE users on a Preview URL. Opening it to LINE needs a Protection change on Vercel. That is a separate RED decision (D-3). Do not use a bypass token in the LIFF URL |
 
-### Y6 — Migration 0000 to 0004 and grants on `development` (RED)
+### Y6 — Migration 0000 to 0005 and grants on `development` (RED)
 
 | Field | Content |
 |---|---|
 | Action | (1) Restore point (D-5). (2) Owner runs `npm run db:migrate` as `faithmap_migrator` on the direct host with `FAITHMAP_CONFIRM_MIGRATE_HOST` set. (3) `03_post_migrate_grants.sql`. (4) `04_verify_roles.sql` |
 | Reason | The branch is empty. The app needs 38 tables, 5 triggers and 3 functions |
-| Impact | Writes the schema to `development`. No row is inserted. `0004` adds nullable columns only. `main` does not change |
-| Expected result | `FaithMap schema ready (driver=postgres, migrations=5/5).` Counts: 38 tables, 5 migration rows, 114 indexes, 186 constraints (not NOT NULL), 5 triggers, 3 functions, 0 rows in all tables |
+| Impact | Writes the schema to `development`. No row is inserted. `0004` adds nullable columns only. `0005` adds columns, checks and an index and runs two data steps that change 0 rows on an empty database. `main` does not change |
+| Expected result | `FaithMap schema ready (driver=postgres, migrations=6/6).` Counts: 38 tables, 6 migration rows, 115 indexes, 191 constraints (not NOT NULL), 5 triggers, 3 functions, 0 rows in all tables |
 | Verification | Content check in the migration plan, section 6.2. Migration hashes equal the repository files. `04` shows 10 of 10 `t`. The runtime role can SELECT and INSERT on append-only tables and cannot UPDATE or DELETE them (attack tests `05`) |
 | Rollback | A failed step 2 rolls back by itself. After success: `06_rollback_schema.sql`, then `07_rollback_roles.sql`. Or restore from the restore point |
 | Stop condition | Any error. Report the full error text without the connection string |
@@ -118,7 +118,7 @@ Rules: never "All Environments". Never Production. Do not set `PG*`, `FAITHMAP_D
 | Impact | One row in `users` and its login method. Runs once (advisory lock) |
 | Verification | Output `Super admin created: <username>`. Login through the Preview works. `SELECT count(*)` of `super_admin` is 1 |
 | Rollback | `06` with `faithmap.allow_data_loss=yes` (deletes the admin row; owner must approve) |
-| After Y7 | Admin maps every team field point to Bodies and coordinators in the new screen "จุดลงพื้นที่" before any other person can read a field point |
+| After Y7 | (1) The admin creates the Bodies in the screen "องค์กร & สิทธิ์" > "จัดการบอดี้". The database has no Body until then. (2) The admin creates groups and assigns leaders. (3) The admin maps every team field point to a Body and a coordinator in the screen "จุดลงพื้นที่". Until every point has a Body, no other person can read a field point |
 
 ## 5. After Y7: checks that stay open
 

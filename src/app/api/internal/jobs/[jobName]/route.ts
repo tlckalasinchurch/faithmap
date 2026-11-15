@@ -10,6 +10,7 @@ import { reportingPeriods } from '@/server/db/schema';
 import { purgeExpiredAuthData } from '@/server/modules/line-identity/cleanup';
 import {
   executeCutoffCheckJob,
+  executeReminderJob,
   generateMeetingBriefForPeriod,
 } from '@/server/modules/insights/service';
 
@@ -40,6 +41,11 @@ export async function POST(
 
     if (jobName === 'cutoff_check') {
       const result = await executeCutoffCheckJob(db, new Date());
+      return NextResponse.json({ ok: true, jobName, result });
+    }
+
+    if (jobName === 'send_reminders') {
+      const result = await executeReminderJob(db, new Date());
       return NextResponse.json({ ok: true, jobName, result });
     }
 

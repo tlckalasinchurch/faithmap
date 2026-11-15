@@ -1,5 +1,8 @@
 # FaithMap — Infrastructure Audit (Phase 0, Read-Only)
 
+> **SUPERSEDED (2026-11-15).** This audit was written before the Vercel and Neon projects were found. Its statements "No Neon project", "No Vercel project" and "No deployment" are no longer true. Use `FAITHMAP_FINAL_INFRASTRUCTURE_AUDIT.md` and `FAITHMAP_NEON_SECURITY_AUDIT.md`. Nothing below is evidence of the current state.
+
+
 **Date:** 2026-11-14 · **Auditor:** Claude Code (read-only) · **Budget rule:** 0 THB/month
 **Audited commit:** `e38a24e29c4c2b1663de9713f084d2ccf0c3b20c`
 

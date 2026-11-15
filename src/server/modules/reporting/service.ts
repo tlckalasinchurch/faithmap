@@ -12,7 +12,7 @@ import {
   users,
   weeklyReports,
 } from '@/server/db/schema';
-import { AppError, isUniqueViolation } from '../errors';
+import { AppError, describeErrorForLog, isUniqueViolation } from '../errors';
 import { recordReportAudit, recordSecurityAudit } from '../audit/service';
 import {
   assertCanAccessGroup,
@@ -23,6 +23,7 @@ import {
   isGroupLeaderForGroup,
   isSupervisorForGroup,
 } from '../authz/policy';
+import { runFollowUpAutomationForReport } from '../pastoral-care/followup-automation';
 import { dispatchNotification } from '../notifications/service';
 import { isUsableAccount, type ActorContext } from '../identity/service';
 import { getBangkokParts, getMondaySundayPeriodBounds, isPastDeadline } from '../time/bangkok';
@@ -244,6 +245,14 @@ function maskDraftReportForViewer(
       summaryNotes: null,
       prayerRequests: null,
       careNeedsNotes: null,
+      teachingTopic: null,
+      scriptureRef: null,
+      activities: {} as Record<string, unknown>,
+      locationText: null,
+      atmosphereNotes: null,
+      followupNeedsText: null,
+      nextWeekPlan: null,
+      supportNeededText: null,
       isLate: false,
       isBlocked: false,
       blockedReason: null,
@@ -272,6 +281,11 @@ function redactRestrictedReportText<
     prayerRequests: string | null;
     notHeldReason: string | null;
     summaryNotes: string | null;
+    locationText: string | null;
+    atmosphereNotes: string | null;
+    followupNeedsText: string | null;
+    nextWeekPlan: string | null;
+    supportNeededText: string | null;
   },
 >(
   report: T,
@@ -281,7 +295,19 @@ function redactRestrictedReportText<
   if (grp && canViewUnmaskedGroupPii(actor, grp.id, grp.bodyId)) return report;
   // DEC-06 (Q-5, Q-6): the reason for a missed meeting and the group summary are free text. They can name a sick
   // person or a family. A pastor reads the status and the numbers, not the text.
-  return { ...report, careNeedsNotes: null, prayerRequests: null, notHeldReason: null, summaryNotes: null };
+  return {
+    ...report,
+    careNeedsNotes: null,
+    prayerRequests: null,
+    notHeldReason: null,
+    summaryNotes: null,
+    // FR-07.2 content fields that are free text or an address follow the same rule (DEC-18).
+    locationText: null,
+    atmosphereNotes: null,
+    followupNeedsText: null,
+    nextWeekPlan: null,
+    supportNeededText: null,
+  };
 }
 
 export async function listReportsForPeriod(
@@ -406,7 +432,16 @@ export interface ReportPayloadInput {
   summaryNotes?: string | null;
   prayerRequests?: string | null;
   careNeedsNotes?: string | null;
-  attendance?: Array<{ memberId: string; attendanceStatus: 'present' | 'absent' | 'excused' }>;
+  // FR-07.2 content of the report
+  teachingTopic?: string | null;
+  scriptureRef?: string | null;
+  activities?: { prayer?: boolean; fellowship?: boolean; other?: string | null } | null;
+  locationText?: string | null;
+  atmosphereNotes?: string | null;
+  followupNeedsText?: string | null;
+  nextWeekPlan?: string | null;
+  supportNeededText?: string | null;
+  attendance?: Array<{ memberId: string; attendanceStatus: 'present' | 'absent' | 'leave' | 'online' }>;
   expectedVersion?: number;
 }
 
@@ -492,6 +527,26 @@ async function assertAttendanceBelongsToGroup(
   }
 }
 
+/** FR-07.2: content fields. A meeting that was not held has no content. Text is trimmed; empty text becomes null. */
+function contentFields(input: ReportPayloadInput) {
+  const clean = (v?: string | null) => (input.meetingHeld ? v?.trim() || null : null);
+  const a = input.meetingHeld ? input.activities ?? {} : {};
+  return {
+    teachingTopic: clean(input.teachingTopic),
+    scriptureRef: clean(input.scriptureRef),
+    activities: {
+      prayer: Boolean(a.prayer),
+      fellowship: Boolean(a.fellowship),
+      other: a.other?.trim() || null,
+    } as Record<string, unknown>,
+    locationText: clean(input.locationText),
+    atmosphereNotes: clean(input.atmosphereNotes),
+    followupNeedsText: clean(input.followupNeedsText),
+    nextWeekPlan: clean(input.nextWeekPlan),
+    supportNeededText: clean(input.supportNeededText),
+  };
+}
+
 function normalizeCounts(input: ReportPayloadInput) {
   if (!input.meetingHeld) {
     return {
@@ -503,9 +558,16 @@ function normalizeCounts(input: ReportPayloadInput) {
       offeringAmountThb: '0.00',
     };
   }
+  // FR-07.2: member attendance is derived from the marks when the report has marks (present and online count, PRD section 4).
+  // A typed number can then never disagree with the list. A report without marks keeps the typed number.
+  const marks = input.attendance ?? [];
+  const memberAttendees =
+    marks.length > 0
+      ? marks.filter((a) => a.attendanceStatus === 'present' || a.attendanceStatus === 'online').length
+      : Math.max(0, input.memberAttendees);
   return {
-    totalAttendees: Math.max(0, input.totalAttendees),
-    memberAttendees: Math.max(0, input.memberAttendees),
+    totalAttendees: Math.max(0, input.totalAttendees, memberAttendees),
+    memberAttendees,
     newVisitorsCount: Math.max(0, input.newVisitorsCount),
     returningVisitorsCount: Math.max(0, input.returningVisitorsCount),
     childrenCount: Math.max(0, input.childrenCount),
@@ -596,6 +658,7 @@ export async function saveDraftReport(
           notHeldReason: input.meetingHeld ? null : input.notHeldReason?.trim() || null,
           meetingDate: input.meetingDate || null,
           ...counts,
+          ...contentFields(input),
           summaryNotes: input.summaryNotes ?? null,
           prayerRequests: input.prayerRequests ?? null,
           careNeedsNotes: input.careNeedsNotes ?? null,
@@ -609,6 +672,7 @@ export async function saveDraftReport(
           notHeldReason: input.meetingHeld ? null : input.notHeldReason?.trim() || null,
           meetingDate: input.meetingDate || null,
           ...counts,
+          ...contentFields(input),
           summaryNotes: input.summaryNotes ?? null,
           prayerRequests: input.prayerRequests ?? null,
           careNeedsNotes: input.careNeedsNotes ?? null,
@@ -699,7 +763,7 @@ export async function submitReport(
   const readiness = await evaluateBodyApprovalReadiness(db, grp.bodyId, actor.user.id);
   const blocked = !readiness.ready;
 
-  return db.transaction(async (tx) => {
+  const submitted = await db.transaction(async (tx) => {
     const tdb = tx as unknown as FaithMapDb;
     let saved: typeof weeklyReports.$inferSelect;
     const prevStatus = existing?.status ?? 'not_submitted';
@@ -724,6 +788,7 @@ export async function submitReport(
           notHeldReason: input.meetingHeld ? null : input.notHeldReason!.trim(),
           meetingDate: input.meetingDate || period.startDate,
           ...counts,
+          ...contentFields(input),
           summaryNotes: input.summaryNotes ?? null,
           prayerRequests: input.prayerRequests ?? null,
           careNeedsNotes: input.careNeedsNotes ?? null,
@@ -734,6 +799,7 @@ export async function submitReport(
           requiresSupervisorReview: supCheck.required,
           submittedByUserId: actor.user.id,
           submittedAt: now,
+          firstSubmittedAt: now,
           version: 1,
         });
     } else {
@@ -743,10 +809,14 @@ export async function submitReport(
           notHeldReason: input.meetingHeld ? null : input.notHeldReason!.trim(),
           meetingDate: input.meetingDate || period.startDate,
           ...counts,
+          ...contentFields(input),
           summaryNotes: input.summaryNotes ?? null,
           prayerRequests: input.prayerRequests ?? null,
           careNeedsNotes: input.careNeedsNotes ?? null,
-          isLate: late,
+          // FR-07.6, FR-08.3: the first submit time and the late flag are fixed at the first submit. A resubmit
+          // after a revision request changes neither.
+          isLate: existing.firstSubmittedAt ? existing.isLate : late,
+          firstSubmittedAt: existing.firstSubmittedAt ?? now,
           isBlocked: blocked,
           blockedReason: readiness.reasonIfNotReady,
           blockedAt: blocked ? now : null,
@@ -786,7 +856,7 @@ export async function submitReport(
       actorRole: 'group_leader',
       reason: blocked ? readiness.reasonIfNotReady : null,
       metadata: {
-        isLate: late,
+        isLate: saved.isLate,
         requiresSupervisorReview: supCheck.required,
         fastTrackFallback: !supCheck.required,
       },
@@ -839,6 +909,20 @@ export async function submitReport(
 
     return saved;
   });
+  // PRD FR-06.4, FR-05.4: automatic follow-up items. Best effort and idempotent. A failure here never undoes a submit.
+  try {
+    await runFollowUpAutomationForReport(db, submitted.id);
+  } catch (err) {
+    await recordSecurityAudit(db, {
+      actorUserId: actor.user.id,
+      action: 'FOLLOWUP_AUTOMATION_FAILED',
+      targetType: 'weekly_report',
+      targetId: submitted.id,
+      outcome: 'error',
+      reason: JSON.stringify(describeErrorForLog(err)),
+    }).catch(() => undefined);
+  }
+  return submitted;
 }
 
 export async function reviewReportBySupervisor(
