@@ -232,9 +232,9 @@ export async function generateMeetingBriefForPeriod(
       return `${snap?.groupNameSnapshot ?? r.groupId}: ${r.blockedReason}`;
     });
 
-  const prayerThemes = nonDraftReports
-    .map((r) => r.prayerRequests?.trim())
-    .filter((x): x is string => Boolean(x));
+  // DEC-06 (owner decision Q-2): the immutable brief never copies raw prayer text. Free text can name a person,
+  // and nobody can remove it from a brief later. The brief keeps only the number of groups that sent a request.
+  const groupsWithPrayerRequests = nonDraftReports.filter((r) => Boolean(r.prayerRequests?.trim())).length;
 
   const metrics: CanonicalMetrics = {
     activeBodies: allBodies.filter((b) => b.status === 'active').length,
@@ -291,7 +291,11 @@ export async function generateMeetingBriefForPeriod(
       returningVisitors: metrics.returningVisitors,
     },
     section8OpenFollowUps: openFollowUps.slice(0, 10).map((f) => f.title),
-    section9PrayerAndCareThemes: prayerThemes.length > 0 ? prayerThemes : ['ไม่มีหัวข้ออธิษฐานเพิ่มเติมในสัปดาห์นี้'],
+    section9GroupsWithPrayerRequests: groupsWithPrayerRequests,
+    section9PrayerAndCareThemes:
+      groupsWithPrayerRequests > 0
+        ? [`มี ${groupsWithPrayerRequests} กลุ่มแจ้งหัวข้ออธิษฐานในสัปดาห์นี้ (ข้อความเป็นข้อมูลจำกัด ดูได้เฉพาะผู้ดูแลกลุ่ม หัวหน้าบอดี้ และผู้ดูแลระบบ)`]
+        : ['ไม่มีกลุ่มแจ้งหัวข้ออธิษฐานในสัปดาห์นี้'],
     section10ActionDecisions: [
       ...(blockedItems.length > 0
         ? [`เร่งแก้ปัญหา Blocked Workflow (${blockedItems.length} กลุ่ม) ในระดับผู้ดูแลระบบ`]

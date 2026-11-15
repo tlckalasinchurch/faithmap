@@ -261,6 +261,20 @@ function maskDraftReportForViewer(
   };
 }
 
+/**
+ * DEC-06 (owner decision Q-1, Nov 2026): `careNeedsNotes` and `prayerRequests` are restricted data.
+ * Only direct stewards, the Body Leader of the group's Body and admins read them. A pastor sees the
+ * rest of the report. The generic type keeps every other field of the row unchanged.
+ */
+function redactRestrictedReportText<T extends { careNeedsNotes: string | null; prayerRequests: string | null }>(
+  report: T,
+  actor: ActorContext,
+  grp: { id: string; bodyId: string | null } | undefined
+): T {
+  if (grp && canViewUnmaskedGroupPii(actor, grp.id, grp.bodyId)) return report;
+  return { ...report, careNeedsNotes: null, prayerRequests: null };
+}
+
 export async function listReportsForPeriod(
   db: FaithMapDb,
   actor: ActorContext,
@@ -293,8 +307,8 @@ export async function listReportsForPeriod(
   return rows
     .filter((r) => canAccessGroup(actor, r.groupId, r.bodyId))
     .map((r) => {
-      const masked = maskDraftReportForViewer(r, actor);
       const grp = groupMap.get(r.groupId);
+      const masked = redactRestrictedReportText(maskDraftReportForViewer(r, actor), actor, grp);
       const body = r.bodyId ? bodyMap.get(r.bodyId) : undefined;
       return {
         ...masked,
@@ -342,7 +356,7 @@ export async function getReportDetailForGroup(
     return null;
   }
 
-  const masked = maskDraftReportForViewer(report, actor);
+  const masked = redactRestrictedReportText(maskDraftReportForViewer(report, actor), actor, grp);
   const attRows = masked.isDraftHidden
     ? []
     : await db

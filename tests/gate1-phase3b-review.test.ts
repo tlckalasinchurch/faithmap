@@ -305,16 +305,14 @@ describe('Gate 1: an account with no organizational scope cannot read internal r
     return buildActorContext(rt.db, u!);
   }
 
-  it('field points: unscoped is refused, scoped users and admins can read, phones stay masked for non-admins', async () => {
+  it('field points: only admins can read (owner decision Q-3, DEC-06); everyone else is refused, unscoped or scoped', async () => {
     await withDb(async (rt, admin) => {
       await syncTeamGFieldPoints(rt.db, admin);
       const unscoped = await unscopedUser(rt);
-      await expect(listTeamFieldPoints(rt.db, unscoped)).rejects.toMatchObject({ status: 403, code: 'SCOPE_REQUIRED' });
+      await expect(listTeamFieldPoints(rt.db, unscoped)).rejects.toMatchObject({ status: 403, code: 'SCOPE_FORBIDDEN' });
 
       const leader = await actorFor(rt, SEED_IDS.users.leaderNongkung);
-      const forLeader = await listTeamFieldPoints(rt.db, leader);
-      expect(forLeader.length).toBeGreaterThan(0);
-      expect(forLeader.every((p) => !p.phone || p.phone.startsWith('***'))).toBe(true);
+      await expect(listTeamFieldPoints(rt.db, leader)).rejects.toMatchObject({ status: 403, code: 'SCOPE_FORBIDDEN' });
       const forAdmin = await listTeamFieldPoints(rt.db, admin);
       expect(forAdmin.some((p) => p.phone && !p.phone.startsWith('***'))).toBe(true);
     });

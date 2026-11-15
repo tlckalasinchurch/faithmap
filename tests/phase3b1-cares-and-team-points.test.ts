@@ -202,7 +202,7 @@ describe('Phase 3B.1: Care Management, Team Field Points & Care-Scoped Authoriza
     }
   });
 
-  it('syncs 23 Team G field points idempotently without creating Care or Group records, and masks phones for non-admin users', async () => {
+  it('syncs 23 Team G field points idempotently without creating Care or Group records, and refuses non-admin users (DEC-06, owner decision Q-3)', async () => {
     const runtime = await createInMemoryTestRuntime();
     try {
       await ensureSchema(runtime);
@@ -241,12 +241,12 @@ describe('Phase 3B.1: Care Management, Team Field Points & Care-Scoped Authoriza
       expect(caresAfter).toHaveLength(caresBefore.length);
 
       const adminPoints = await listTeamFieldPoints(runtime.db, adminActor, { teamCode: 'G' });
-      const stewardPoints = await listTeamFieldPoints(runtime.db, northActor, { teamCode: 'G' });
+      await expect(listTeamFieldPoints(runtime.db, northActor, { teamCode: 'G' })).rejects.toMatchObject({
+        status: 403,
+        code: 'SCOPE_FORBIDDEN',
+      });
       expect(adminPoints).toHaveLength(23);
-      expect(stewardPoints).toHaveLength(23);
 
-      // Non-admin gets masked phone number
-      expect(stewardPoints[0]?.phone).toMatch(/^\*\*\*-\*\*\*-\d{4}$/);
       expect(adminPoints[0]?.phone).not.toMatch(/^\*\*\*/);
     } finally {
       await runtime.close();

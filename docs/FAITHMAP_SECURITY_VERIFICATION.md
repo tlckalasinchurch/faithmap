@@ -29,7 +29,7 @@ Not verified: behaviour with real LINE, real devices, and Neon. No mutation test
 
 Source of truth: `DEC-06` (decision register) limits **phone, address and restricted absence notes** to direct stewards, the Body Leader of the group and admins. A pastor (`mission_leader`) sees "aggregate metrics and non-PII summaries". The permission model also says the Meeting Brief is "Full, non-PII" for pastors.
 
-### 2.1 What the code does today (VERIFIED)
+### 2.1 What the code did before the owner decisions (VERIFIED at commit `f72d22a`)
 
 | Field | Where it is written | Who can read it now | Notes |
 |---|---|---|---|
@@ -48,42 +48,70 @@ Drafts are hidden from everyone but the Group Leader (`FR-07.5`), so the exposur
 3. `prayerRequests` goes into the immutable brief for all pastors and Body Leaders. A name entered once is permanent in the brief.
 4. The decision register does not list these fields as restricted. This is a **policy gap**, not a coding error. I did not change behaviour.
 
-### 2.3 Proposed permission matrix (not implemented; needs owner approval)
+### 2.3 Owner decisions (2026-11-15) and what the code does now
 
-Roles: GL = Group Leader of the group; CC = Care Leader or Coordinator assigned; BL = Body Leader of the body; PA = Pastor (`mission_leader`); AD = admin or `super_admin`; OT = other group or body.
-
-| Item | GL | CC | BL | PA | AD | OT |
-|---|---|---|---|---|---|---|
-| Absence note (attendance) | Yes | Yes | Yes | **No** (done, F-1) | Yes | No |
-| Follow-up notes | Yes | Yes | Yes | **No** (done, F-2) | Yes | No |
-| `careNeedsNotes` | Yes | Yes | Yes | **No** (proposed) | Yes | No |
-| `prayerRequests` (raw text) | Yes | Yes | Yes | **No** (proposed) | Yes | No |
-| `summaryNotes` | Yes | Yes | Yes | Yes | Yes | No |
-| `notHeldReason` | Yes | Yes | Yes | Yes | Yes | No |
-| Brief section 9 (prayer and care) | — | — | Own body only | **Count of groups with a request** (proposed) | Full | No |
-| Brief section 8 (follow-up titles) | — | — | Own body only | Count only (proposed) | Full | No |
-| Report counts, attendance, late, blocked | Yes | Yes | Yes | Yes | Yes | No |
-
-### 2.4 Options
-
-| Option | Change | Effect on users | Effort and risk |
+| ID | Decision | Register | Code status |
 |---|---|---|---|
-| A (recommended) | Apply the matrix above. Pastors see counts and `summaryNotes`, not `careNeedsNotes` or raw prayer text. Brief section 9 shows how many groups sent a prayer request. Add a short form hint: "ห้ามใส่ชื่อ เบอร์โทร หรือโรค" | Pastors lose the raw text. Body Leaders keep it | Small code change in `reporting` and `insights`, new regression tests. **Change in business behaviour of the brief: needs approval** |
-| B | Keep the status quo. Add only the form hint | Pastors read all free text; the brief keeps raw prayer text | No code risk. Policy risk stays. Not recommended before the first production brief |
-| C | A pastor-facing field: the Group Leader writes a separate "theme for the pastor" with no names | Best privacy; more steps for elderly users | New column and migration; against the "minimal steps" rule |
+| Q-1 | `careNeedsNotes` and `prayerRequests` are Restricted Data | `DEC-15` | **Done.** Removed from report list and detail for every viewer outside the group's stewards, the Body Leader of that Body and admins. Test `gate15` |
+| Q-2 | Brief shows only the number of groups with a prayer request | `DEC-16` | **Done** for new briefs. Raw text is not copied. Test `gate15` (also checks that no seed prayer text appears) |
+| Q-3 | Team field points only for the same Body, the assigned coordinator and admins; nobody else, masked or not | `DEC-17` | **Done as fail-closed**: admin only. The data has no Body link and no coordinator account link for a point, so no other person can be proven to qualify. Test `gate15`, `gate1`, `phase3b1` |
+| Q-4 | Option A | — | Applied as above |
 
-Timing: the first brief is generated on Sunday 20:30 ICT. Decide before the first real report is submitted, because a brief with raw text cannot be edited.
+Fail-closed means a non-admin who should see a point (same Body, assigned coordinator) is refused until the data model links the point. That is stricter than the decision, on purpose. See Q-8.
 
-### 2.5 Owner questions
+### 2.4 Permission matrix (after the owner decisions)
 
-| ID | Question |
-|---|---|
-| Q-1 | Do `careNeedsNotes` and `prayerRequests` count as restricted data under `DEC-06`? |
-| Q-2 | Should the Meeting Brief show raw prayer text (status quo), a count, or a curated theme? |
-| Q-3 | May any person with a role list all team field points (coordinator names, masked phone), or only people of the same body? |
-| Q-4 | Option A, B or C? |
+Roles: GL = Group Leader of the group; CC = Care Leader or Coordinator assigned to the group; BL = Body Leader of the group's Body; PA = Pastor (`mission_leader`); AD = admin or `super_admin`; OT = any other user.
 
-I will not change these fields until the owner answers.
+| Item | GL | CC | BL | PA | AD | OT | Status |
+|---|---|---|---|---|---|---|---|
+| Absence note (attendance) | Yes | Yes | Yes | No | Yes | No | Done (F-1) |
+| Follow-up notes | Yes | Yes | Yes | No | Yes | No | Done (F-2) |
+| `careNeedsNotes` | Yes | Yes | Yes | **No** | Yes | No | Done (`DEC-15`) |
+| `prayerRequests` (raw text) | Yes | Yes | Yes | **No** | Yes | No | Done (`DEC-15`) |
+| Brief section 9 | — | — | Count | Count | Count | No | Done (`DEC-16`). The brief is one immutable document, so every reader gets the same count |
+| `summaryNotes` | Yes | Yes | Yes | Yes | Yes | No | **Open, Q-6** |
+| `notHeldReason` | Yes | Yes | Yes | Yes | Yes | No | **Open, Q-5** (recommended: restricted) |
+| Brief section 8 (follow-up titles) | — | — | Titles | Titles | Titles | No | **Open, Q-7** (recommended: count only) |
+| Team field points | No | No (until linked) | No (until linked) | No | Yes | No | Done (`DEC-17`, fail closed) |
+| Report counts, attendance numbers, late, blocked | Yes | Yes | Yes | Yes | Yes | No | Unchanged |
+
+### 2.5 Consistency check: `notHeldReason`, F-1 and `DEC-06`
+
+The earlier matrix (section 2.3 of the first version) let a pastor read `notHeldReason`. That conflicts with F-1 and with `DEC-06`:
+- `DEC-06` protects "restricted absence notes". `notHeldReason` is the reason a whole meeting did not happen. Real reasons are often a leader's illness, a death or an accident. That is the same kind of content as an absence note, for one person instead of one member.
+- F-1 hides a member's absence note from a pastor. Showing `notHeldReason` to the same pastor is inconsistent.
+- The brief only needs the count of confirmed not-held meetings (`confirmedNotHeld`), which it already stores. The reason text is not needed in any aggregate.
+
+Recommendation (Q-5): treat `notHeldReason` as restricted, like `careNeedsNotes`. A pastor sees only that the meeting was not held. I did **not** change the code, because the owner decision names only `careNeedsNotes` and `prayerRequests`.
+
+Other matrix conflicts found:
+1. Brief readers. The permission model says a Body Leader reads a "Own Body slice" of the brief. The code returns the whole brief to every Body Leader (`listMeetingBriefs`). The brief holds organization-wide aggregates and names of late or missing groups, no personal data. Low risk. Open decision Q-9.
+2. The first version of this matrix gave a Body Leader the full follow-up titles in the brief and a pastor only a count. One immutable document cannot give two different texts to two readers unless the code filters at read time. Q-7 asks for one rule.
+
+### 2.6 Owner questions that remain
+
+| ID | Question | Recommendation |
+|---|---|---|
+| Q-5 | Is `notHeldReason` restricted like an absence note? | Yes |
+| Q-6 | Is `summaryNotes` free text allowed for a pastor? | Yes, with a form hint that tells leaders not to write names, phones or illnesses. Revisit after the first weeks of real reports |
+| Q-7 | Brief section 8: first 10 follow-up titles (may contain names) | Replace with the count (`openFollowUps`) |
+| Q-8 | How should the data link a team field point to a Body and a coordinator account? | Add `body_id` and `coordinator_user_id` columns to `team_field_points` (new migration `0004`), set by an admin action. Then allow the same-Body and assigned-coordinator rule |
+| Q-9 | Should a Body Leader read the whole brief or only the slice of their Body? | Whole brief (no personal data), and update the permission model text |
+
+### 2.7 Meeting Brief of Sunday 15 November 2026, 20:30 ICT (checked 21:23 ICT)
+
+| Check | Result | Evidence |
+|---|---|---|
+| Was the brief generated? | **No brief can exist in any known database** | Neon `main` and `development`: 0 FaithMap tables, no `drizzle` schema, no `meeting_briefs` table (counts at about 14:22Z, VERIFIED) |
+| How would a brief start? | Only through the job route with `CRON_SECRET`, or by an admin who is logged in | `generate_meeting_brief` job. The repository has no `vercel.json` (no Vercel Cron). Vercel has no `CRON_SECRET` and no `DATABASE_URL` (VERIFIED). Production code answers `503` without a database |
+| Real reports or user accounts? | **None** in Neon. No FaithMap user, report or brief table exists | Same counts |
+| Runtime log of the last hours | Not readable. The Hobby plan keeps 1 hour of logs only | NOT VERIFIED by logs. The database evidence is stronger |
+| Other databases | The Vercel project `faithmap.puntakit` builds this repository. I cannot read its variables or database | **NOT VERIFIED.** If it has its own `DATABASE_URL`, a brief could exist there |
+| Immutable briefs touched | No. I did not edit or delete any brief | — |
+| Personal-data risk from a brief | **None found** in any database I can read. The risk exists only if `faithmap.puntakit` has a database | Owner must check that project |
+
+Because no brief exists, the format change (`DEC-16`) needs no clean-up. The next brief (Sunday 22 November 2026, 20:30 ICT) will use the count-only format if this code is deployed before then.
 
 ## 3. Residual items
 

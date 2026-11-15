@@ -991,7 +991,8 @@ export async function ensureSeeded(db: FaithMapDb): Promise<boolean> {
       section6BlockedAndEscalations: [],
       section7NewVisitorsSummary: { totalNewVisitors: 1, consentedFollowUp: 1 },
       section8OpenFollowUps: ['ติดตามสมาชิกขาดประชุมและผู้เยี่ยมใหม่ 1 รายการ'],
-      section9PrayerAndCareThemes: ['การเยี่ยมเยียนผู้สูงอายุและสมาชิกเตรียมผ่าตัด'],
+      section9GroupsWithPrayerRequests: 1,
+      section9PrayerAndCareThemes: ['มี 1 กลุ่มแจ้งหัวข้ออธิษฐานในสัปดาห์นี้ (ข้อความเป็นข้อมูลจำกัด ดูได้เฉพาะผู้ดูแลกลุ่ม หัวหน้าบอดี้ และผู้ดูแลระบบ)'],
       section10ActionDecisions: ['แต่งตั้ง Body Leader บอดี้ใต้และเตรียมความพร้อมกลุ่มนำร่องกาฬสินธุ์'],
     },
     metricsJson: {

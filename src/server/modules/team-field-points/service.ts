@@ -3,7 +3,7 @@ import type { FaithMapDb } from '@/server/db/client';
 import { teamFieldPoints } from '@/server/db/schema';
 import { KALASIN_TEAM_G_POINTS } from '@/lib/kalasin-field-points';
 import { recordSecurityAudit } from '../audit/service';
-import { isAdmin, isGlobalMetricsReader } from '../authz/policy';
+import { isAdmin } from '../authz/policy';
 import { AppError } from '../errors';
 import type { ActorContext } from '../identity/service';
 
@@ -32,9 +32,12 @@ export async function listTeamFieldPoints(
   actor: ActorContext,
   filters: { teamCode?: string | null; q?: string | null } = {}
 ): Promise<TeamFieldPointView[]> {
-  // Coordinator names and phone numbers are for people who hold a role in the organization.
-  if (!isGlobalMetricsReader(actor) && actor.assignments.length === 0) {
-    throw new AppError(403, 'SCOPE_REQUIRED', 'บัญชีนี้ยังไม่ได้รับหน้าที่ในระบบ จึงยังดูข้อมูลนี้ไม่ได้');
+  // DEC-06 (owner decision Q-3): coordinator names and phones are for admins, for people of the same Body and for the
+  // coordinator who is assigned to the point. A point has no Body and no coordinator account in the data yet, so no
+  // non-admin can be proven to qualify. Fail closed: admins only, even for a masked phone.
+  // To open it later, add a body link and a coordinator account link to `team_field_points`, then check them here.
+  if (!isAdmin(actor)) {
+    throw new AppError(403, 'SCOPE_FORBIDDEN', 'ข้อมูลจุดลงพื้นที่ดูได้เฉพาะผู้ดูแลระบบ จนกว่าจะกำหนดบอดี้และผู้ประสานงานของแต่ละจุด');
   }
   const conditions = [];
   if (filters.teamCode?.trim()) {
