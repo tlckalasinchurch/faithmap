@@ -31,8 +31,9 @@ const ingestionActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('resolve_issue'),
     issueId: z.string().uuid(),
-    decision: z.enum(['approved_fix', 'rejected', 'resolved', 'deferred']),
-    resolutionNote: z.string().min(2),
+    decision: z.enum(['approved_fix', 'rejected', 'resolved', 'deferred', 'reversed']),
+    resolutionNote: z.string().trim().min(2).max(2000),
+    expectedDecisionId: z.string().uuid().nullable().optional(),
   }),
   z.object({
     action: z.literal('review_location_match'),

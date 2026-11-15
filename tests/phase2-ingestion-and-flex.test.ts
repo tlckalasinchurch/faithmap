@@ -303,12 +303,13 @@ describe('Phase 2: Flexible Schema, Staging Import, DQ Review & Rollback', () =>
 
       const adminView = await listIngestionOverview(runtime.db, adminActor);
       const dupIssues = adminView.issues.filter((i) => i.issueCode === 'duplicate_candidate');
-      expect(dupIssues).toHaveLength(1);
-      expect(dupIssues[0]!.summarySafeText).not.toContain(dupSecretName);
-      expect(dupIssues[0]!.summarySafeText).toContain('FMM-D01');
-      expect(dupIssues[0]!.summarySafeText).toContain('FMG-D01');
-      expect(dupIssues[0]!.summarySafeText).toContain('FMM-D02');
-      expect(dupIssues[0]!.summarySafeText).toContain('FMG-D02');
+      // Owner rule: one issue per row of the candidate set (2 rows -> 2 issues).
+      expect(dupIssues).toHaveLength(2);
+      for (const issue of dupIssues) {
+        expect(issue.summarySafeText).not.toContain(dupSecretName);
+        expect(issue.summarySafeText).toMatch(/FMM-D0[12]/);
+        expect(issue.summarySafeText).toMatch(/FMG-D0[12]/);
+      }
 
       // 2. District & Care-Body mappings + assignUnassignedGroupBody
       const distMap = await saveDistrictMapping(

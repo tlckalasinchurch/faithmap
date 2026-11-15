@@ -10,7 +10,7 @@ import * as schema from '@/server/db/schema';
 import { createDbRuntimeFromEnv, type DbRuntime } from '@/server/db/client';
 import { assertMigrated, countAppliedMigrations, ensureSchema, EXPECTED_MIGRATION_COUNT } from '@/server/db/migrate';
 import { createFirstSuperAdmin } from '@/server/modules/identity/bootstrap';
-import { stageImportBatch } from '@/server/modules/ingestion/service';
+import { listDecisionHistory, resolveDataQualityIssue, stageImportBatch } from '@/server/modules/ingestion/service';
 import { assignCareSteward, createProvisionalCare } from '@/server/modules/cares/service';
 import { assignLeadershipRole, createGroup } from '@/server/modules/organization/service';
 import { ensureActiveReportingPeriod, submitReport, updateReportIfCurrent } from '@/server/modules/reporting/service';
@@ -176,7 +176,7 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
     await expect(rt.db.execute(sql`UPDATE security_audit_logs SET reason = 'x'`)).rejects.toThrow();
     await expect(rt.db.execute(sql`DELETE FROM security_audit_logs`)).rejects.toThrow();
     const r = await rt.db.execute(sql`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname LIKE 'trg_%_immutable' AND NOT tgisinternal`);
-    expect((r as unknown as { rows: Array<{ n: number }> }).rows[0]!.n).toBe(3);
+    expect((r as unknown as { rows: Array<{ n: number }> }).rows[0]!.n).toBe(4);
   });
 
   it('Phase 3B: two identical imports at once give one batch and one idempotent hit', async () => {
@@ -235,6 +235,40 @@ describe.skipIf(!enabled)('Real PostgreSQL 16', () => {
     expect(codes).toEqual(['VERSION_CONFLICT', 'ok']);
     const [after] = await rt.db.select().from(schema.weeklyReports).where(eq(schema.weeklyReports.id, copy!.id));
     expect(after!.version).toBe(copy!.version + 1);
+  });
+
+  it('Decisions: two decisions on the same issue at once leave one chain with one winner', async () => {
+    const [adminRow] = await rt.db.select().from(schema.users).where(eq(schema.users.id, SEED_IDS.users.admin));
+    const admin = await buildActorContext(rt.db, adminRow!);
+    const staged = await stageImportBatch(rt.db, admin, {
+      sourceArchiveName: 'race-dq.xlsx',
+      groups: [
+        { groupRef: 'RDQ-A', groupNameFromSheet: 'A', careCode: 'RDQA', sourceFile: 'race-dq.xlsx', sourceSheet: 'A' },
+        { groupRef: 'RDQ-B', groupNameFromSheet: 'B', careCode: 'RDQB', sourceFile: 'race-dq.xlsx', sourceSheet: 'B' },
+      ],
+      members: [
+        { memberRowRef: 'RDQ-A1', groupRef: 'RDQ-A', sourceFile: 'race-dq.xlsx', sourceSheet: 'A', sourceRow: 5, fullNameRaw: 'แข่งขัน ตัดสิน', nicknameRaw: 'แข่ง' },
+        { memberRowRef: 'RDQ-B1', groupRef: 'RDQ-B', sourceFile: 'race-dq.xlsx', sourceSheet: 'B', sourceRow: 5, fullNameRaw: 'แข่งขัน ตัดสิน', nicknameRaw: 'แข่ง' },
+      ],
+    });
+    const [issue] = await rt.db.select().from(schema.dataQualityIssues).where(eq(schema.dataQualityIssues.batchId, staged.batch.id));
+    const results = await Promise.allSettled([
+      resolveDataQualityIssue(rt.db, admin, { issueId: issue!.id, decision: 'approved_fix', resolutionNote: 'อนุมัติ' }),
+      resolveDataQualityIssue(rt.db, admin, { issueId: issue!.id, decision: 'rejected', resolutionNote: 'ปฏิเสธ' }),
+    ]);
+    const codes = results.map((r) => (r.status === 'rejected' ? (r.reason as { code?: string }).code : 'ok')).sort();
+    expect(codes).toEqual(['DECISION_CONFLICT', 'ok']);
+    const history = await listDecisionHistory(rt.db, admin, issue!.id);
+    expect(history).toHaveLength(1);
+    // A second round on the new head: again exactly one winner.
+    const head = history[0]!;
+    const round2 = await Promise.allSettled([
+      resolveDataQualityIssue(rt.db, admin, { issueId: issue!.id, decision: 'reversed', resolutionNote: 'ยกเลิก', expectedDecisionId: head.id }),
+      resolveDataQualityIssue(rt.db, admin, { issueId: issue!.id, decision: 'deferred', resolutionNote: 'รอ', expectedDecisionId: head.id }),
+    ]);
+    const codes2 = round2.map((r) => (r.status === 'rejected' ? (r.reason as { code?: string }).code : 'ok')).sort();
+    expect(codes2.filter((c) => c === 'ok')).toHaveLength(1);
+    expect(await listDecisionHistory(rt.db, admin, issue!.id)).toHaveLength(2);
   });
 
   it('creates exactly one super_admin when two bootstrap runs race (run last: it changes seed roles)', async () => {

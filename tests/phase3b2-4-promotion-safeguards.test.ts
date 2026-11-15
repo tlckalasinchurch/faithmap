@@ -180,20 +180,36 @@ describe('Phase 3B.2.4: Review, Approval & Promotion Safeguards', () => {
         .from(schema.stagingMemberRows)
         .where(eq(schema.stagingMemberRows.batchId, staged.batch.id));
       const rowA = stagedRows.find((r) => r.memberRowRef === 'M-3B24-A1');
+      const rowB = stagedRows.find((r) => r.memberRowRef === 'M-3B24-B1');
+      // Owner rule: EVERY row of the candidate set is pending_review, not only the first.
       expect(rowA?.dataStatus).toBe('pending_review');
+      expect(rowB?.dataStatus).toBe('pending_review');
 
-      const [dupIssue] = await runtime.db
+      const dupIssues = await runtime.db
         .select()
         .from(schema.dataQualityIssues)
         .where(eq(schema.dataQualityIssues.batchId, staged.batch.id));
-      expect(dupIssue?.issueCode).toBe('duplicate_candidate');
+      expect(dupIssues).toHaveLength(2);
+      expect(dupIssues.every((i) => i.issueCode === 'duplicate_candidate')).toBe(true);
+      const dupIssue = dupIssues.find((i) => i.targetId === rowA!.id);
+      const dupIssueB = dupIssues.find((i) => i.targetId === rowB!.id);
 
-      // First promote skips pending_review rowA and promotes rowB only
+      // First promote creates both groups but NO member. Nothing is merged or promoted by itself.
       const pass1 = await promoteStagingBatch(runtime.db, adminActor, staged.batch.id);
       expect(pass1.promotedGroupsCount).toBe(2);
-      expect(pass1.promotedMembersCount).toBe(1);
-      expect(pass1.skippedIncompleteMembers).toBe(1);
+      expect(pass1.promotedMembersCount).toBe(0);
+      expect(pass1.skippedIncompleteMembers).toBe(2);
       expect(pass1.batch.status).toBe('partially_promoted');
+      expect(
+        (await runtime.db.select().from(schema.members).where(eq(schema.members.memberCode, 'M-3B24-B1'))).length
+      ).toBe(0);
+
+      // A person decides row B on its own: approve. Row A is rejected below.
+      await resolveDataQualityIssue(runtime.db, adminActor, {
+        issueId: dupIssueB!.id,
+        decision: 'approved_fix',
+        resolutionNote: 'ยืนยันว่าเป็นคนละคน',
+      });
 
       // Rejecting the duplicate_candidate moves rowA to rejected and never promotes it
       await resolveDataQualityIssue(runtime.db, adminActor, {
@@ -209,7 +225,7 @@ describe('Phase 3B.2.4: Review, Approval & Promotion Safeguards', () => {
       expect(rejectedRowA?.dataStatus).toBe('rejected');
 
       const pass2 = await promoteStagingBatch(runtime.db, adminActor, staged.batch.id);
-      expect(pass2.promotedMembersCount).toBe(0);
+      expect(pass2.promotedMembersCount).toBe(1);
       expect(pass2.skippedIncompleteMembers).toBe(0);
       expect(pass2.batch.status).toBe('promoted');
     } finally {

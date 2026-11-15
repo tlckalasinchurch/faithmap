@@ -8,6 +8,7 @@ import {
   candidateLocationMatches,
   careBodyMappings,
   cares,
+  dataQualityDecisions,
   dataQualityIssues,
   districtCanonicalMappings,
   groupMemberships,
@@ -549,24 +550,27 @@ export async function stageImportBatch(
       }
     }
 
+    // Owner rule: every row of a cross-group duplicate candidate set enters pending_review.
+    // No row of the set is promoted or merged automatically. Each row gets its own issue,
+    // so a person decides each row on its own.
     const duplicateCandidateMemberIds: string[] = [];
     for (const bucket of stagingMemberBuckets.values()) {
       const distinctGroups = new Set(bucket.map((b) => b.groupRef));
-      if (distinctGroups.size > 1) {
-        const first = bucket[0]!;
-        duplicateCandidateMemberIds.push(first.id);
+      if (distinctGroups.size <= 1) continue;
+      for (const row of bucket) {
+        duplicateCandidateMemberIds.push(row.id);
         const peerRefs = bucket
-          .slice(1)
+          .filter((b) => b.id !== row.id)
           .map((b) => `${b.memberRowRef}/${b.groupRef}`)
           .join(', ');
         dqRows.push({
           batchId: batch!.id,
           targetType: 'staging_member',
-          targetId: first.id,
+          targetId: row.id,
           issueCode: 'duplicate_candidate',
           severity: 'review',
           status: 'open',
-          summarySafeText: `${first.memberRowRef} (${first.groupRef}): ชื่อตรงกับแถวอื่นในต่างกลุ่ม (${peerRefs}) — รอคนยืนยัน`,
+          summarySafeText: `${row.memberRowRef} (${row.groupRef}): ชื่อตรงกับแถวอื่นในต่างกลุ่ม (${peerRefs}) — รอคนยืนยัน`,
           proposedValueJson: {
             refs: bucket.map((b) => ({ memberRowRef: b.memberRowRef, groupRef: b.groupRef })),
           },
@@ -581,7 +585,7 @@ export async function stageImportBatch(
         .where(
           and(
             inArray(stagingMemberRows.id, duplicateCandidateMemberIds),
-            eq(stagingMemberRows.dataStatus, 'raw')
+            inArray(stagingMemberRows.dataStatus, ['raw', 'normalized'])
           )
         );
     }
@@ -743,15 +747,60 @@ export async function listIngestionOverview(db: FaithMapDb, actor: ActorContext)
   };
 }
 
+export type DataQualityDecisionType =
+  | 'approved_fix'
+  | 'rejected'
+  | 'resolved'
+  | 'deferred'
+  | 'reversed';
+
+type DecisionRow = typeof dataQualityDecisions.$inferSelect;
+
+/** The head is the decision that no other decision supersedes. */
+function findDecisionHead(rows: DecisionRow[]): DecisionRow | null {
+  const superseded = new Set(rows.map((r) => r.supersedesDecisionId).filter(Boolean));
+  return rows.find((r) => !superseded.has(r.id)) ?? null;
+}
+
+async function assertCanDecideIssue(
+  db: FaithMapDb,
+  actor: ActorContext,
+  issue: typeof dataQualityIssues.$inferSelect
+) {
+  if (isAdmin(actor)) return;
+  if (issue.targetType === 'group') {
+    const [grp] = await db
+      .select()
+      .from(houseMissionGroups)
+      .where(eq(houseMissionGroups.id, issue.targetId));
+    if (!grp?.bodyId || !isBodyLeaderForBody(actor, grp.bodyId)) {
+      throw new AppError(403, 'SCOPE_FORBIDDEN', 'ไม่มีสิทธิ์จัดการรายการนอกบอดี้ของตนเอง');
+    }
+    return;
+  }
+  throw new AppError(403, 'ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่อนุมัติรายการ Staging ได้');
+}
+
+/**
+ * Records a data-quality decision. Decisions are immutable: this function only appends a row.
+ * A new decision supersedes the current head. A 'reversed' decision cancels the head and re-opens the
+ * issue. The issue row keeps a projection of the head for fast lists; the decision table is the record.
+ */
 export async function resolveDataQualityIssue(
   db: FaithMapDb,
   actor: ActorContext,
   input: {
     issueId: string;
-    decision: 'approved_fix' | 'rejected' | 'resolved' | 'deferred';
+    decision: DataQualityDecisionType;
     resolutionNote: string;
+    /** Optional stale-screen guard. null means "I expect no earlier decision". */
+    expectedDecisionId?: string | null;
   }
 ) {
+  const reason = input.resolutionNote.trim();
+  if (!reason) {
+    throw new AppError(400, 'REASON_REQUIRED', 'กรุณาระบุเหตุผลของการตัดสินใจ');
+  }
   const [issue] = await db
     .select()
     .from(dataQualityIssues)
@@ -759,69 +808,120 @@ export async function resolveDataQualityIssue(
   if (!issue) {
     throw new AppError(404, 'ISSUE_NOT_FOUND', 'ไม่พบรายการตรวจสอบคุณภาพข้อมูล');
   }
+  await assertCanDecideIssue(db, actor, issue);
 
-  if (!isAdmin(actor)) {
-    if (issue.targetType === 'group') {
-      const [grp] = await db
+  try {
+    return await db.transaction(async (tx) => {
+      const history = await tx
         .select()
-        .from(houseMissionGroups)
-        .where(eq(houseMissionGroups.id, issue.targetId));
-      if (!grp?.bodyId || !isBodyLeaderForBody(actor, grp.bodyId)) {
-        throw new AppError(403, 'SCOPE_FORBIDDEN', 'ไม่มีสิทธิ์จัดการรายการนอกบอดี้ของตนเอง');
+        .from(dataQualityDecisions)
+        .where(eq(dataQualityDecisions.issueId, issue.id));
+      const head = findDecisionHead(history);
+
+      if (input.expectedDecisionId !== undefined && (head?.id ?? null) !== input.expectedDecisionId) {
+        throw new AppError(409, 'DECISION_STALE', 'มีผู้อื่นตัดสินใจรายการนี้แล้ว กรุณาโหลดหน้าใหม่');
       }
-    } else {
-      throw new AppError(403, 'ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่อนุมัติรายการ Staging ได้');
+      if (input.decision === 'reversed' && (!head || head.decisionType === 'reversed')) {
+        throw new AppError(409, 'NOTHING_TO_REVERSE', 'ไม่มีการตัดสินใจที่ยกเลิกได้');
+      }
+
+      let stagingRow: typeof stagingMemberRows.$inferSelect | undefined;
+      if (issue.targetType === 'staging_member') {
+        [stagingRow] = await tx
+          .select()
+          .from(stagingMemberRows)
+          .where(eq(stagingMemberRows.id, issue.targetId));
+        if (stagingRow && (stagingRow.promotedMemberId || stagingRow.dataStatus === 'promoted')) {
+          throw new AppError(
+            409,
+            'DECISION_LOCKED',
+            'แถวนี้นำเข้าเป็นสมาชิกแล้ว จึงเปลี่ยนการตัดสินใจไม่ได้'
+          );
+        }
+      }
+
+      const [decision] = await tx
+        .insert(dataQualityDecisions)
+        .values({
+          issueId: issue.id,
+          decisionType: input.decision,
+          supersedesDecisionId: head?.id ?? null,
+          reason,
+          decidedByUserId: actor.user.id,
+        })
+        .returning();
+
+      const reopened = input.decision === 'reversed';
+      const [updated] = await tx
+        .update(dataQualityIssues)
+        .set({
+          status: reopened ? 'open' : input.decision,
+          resolutionNote: reason,
+          resolvedByUserId: reopened ? null : actor.user.id,
+          resolvedAt: reopened ? null : decision!.decidedAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(dataQualityIssues.id, issue.id))
+        .returning();
+
+      if (stagingRow) {
+        const next =
+          input.decision === 'approved_fix' || input.decision === 'resolved'
+            ? 'approved'
+            : input.decision === 'rejected'
+              ? 'rejected'
+              : 'pending_review'; // deferred and reversed: a person must decide again
+        await tx
+          .update(stagingMemberRows)
+          .set({ dataStatus: next, updatedAt: new Date() })
+          .where(
+            and(
+              eq(stagingMemberRows.id, stagingRow.id),
+              isNull(stagingMemberRows.promotedMemberId),
+              inArray(stagingMemberRows.dataStatus, [
+                'conflict',
+                'pending_review',
+                'approved',
+                'rejected',
+              ])
+            )
+          );
+      }
+
+      await recordSecurityAudit(tx, {
+        actorUserId: actor.user.id,
+        action: head ? 'dq_decision_superseded' : 'dq_issue_resolved',
+        targetType: 'data_quality_issue',
+        targetId: issue.id,
+        reason,
+        metadata: {
+          issueCode: issue.issueCode,
+          decision: input.decision,
+          decisionId: decision!.id,
+          supersedesDecisionId: head?.id ?? null,
+        },
+      });
+
+      return updated!;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new AppError(409, 'DECISION_CONFLICT', 'มีผู้อื่นตัดสินใจรายการนี้พร้อมกัน กรุณาโหลดหน้าใหม่');
     }
+    throw err;
   }
+}
 
-  const [updated] = await db
-    .update(dataQualityIssues)
-    .set({
-      status: input.decision,
-      resolutionNote: input.resolutionNote,
-      resolvedByUserId: actor.user.id,
-      resolvedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(dataQualityIssues.id, input.issueId))
-    .returning();
-
-  if (issue.targetType === 'staging_member') {
-    if (input.decision === 'approved_fix' || input.decision === 'resolved') {
-      await db
-        .update(stagingMemberRows)
-        .set({ dataStatus: 'approved', updatedAt: new Date() })
-        .where(
-          and(
-            eq(stagingMemberRows.id, issue.targetId),
-            inArray(stagingMemberRows.dataStatus, ['conflict', 'pending_review']),
-            isNull(stagingMemberRows.promotedMemberId)
-          )
-        );
-    } else if (input.decision === 'rejected') {
-      await db
-        .update(stagingMemberRows)
-        .set({ dataStatus: 'rejected', updatedAt: new Date() })
-        .where(
-          and(
-            eq(stagingMemberRows.id, issue.targetId),
-            inArray(stagingMemberRows.dataStatus, ['conflict', 'pending_review']),
-            isNull(stagingMemberRows.promotedMemberId)
-          )
-        );
-    }
-  }
-
-  await recordSecurityAudit(db, {
-    actorUserId: actor.user.id,
-    action: 'dq_issue_resolved',
-    targetType: 'data_quality_issue',
-    targetId: issue.id,
-    reason: input.resolutionNote,
-    metadata: { issueCode: issue.issueCode, decision: input.decision },
-  });
-
-  return updated!;
+/** Full decision history of one issue, oldest first. Same access rule as deciding. */
+export async function listDecisionHistory(db: FaithMapDb, actor: ActorContext, issueId: string) {
+  const [issue] = await db.select().from(dataQualityIssues).where(eq(dataQualityIssues.id, issueId));
+  if (!issue) throw new AppError(404, 'ISSUE_NOT_FOUND', 'ไม่พบรายการตรวจสอบคุณภาพข้อมูล');
+  await assertCanDecideIssue(db, actor, issue);
+  return db
+    .select()
+    .from(dataQualityDecisions)
+    .where(eq(dataQualityDecisions.issueId, issueId))
+    .orderBy(dataQualityDecisions.decidedAt);
 }
 
 export async function confirmCandidateLocation(

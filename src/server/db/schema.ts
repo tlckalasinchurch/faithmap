@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   index,
   check,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -1019,6 +1020,51 @@ export const dataQualityIssues = pgTable(
       sql`${t.status} IN ('open', 'approved_fix', 'rejected', 'resolved', 'deferred')`
     ),
     index('dq_issues_status_code_idx').on(t.status, t.issueCode, t.batchId),
+  ]
+);
+
+/**
+ * Immutable decision history for data-quality issues.
+ * A row is never updated or deleted (database trigger). A later decision supersedes an earlier one
+ * through supersedesDecisionId. A reversal is a decision of type 'reversed'. The head of the chain is
+ * the decision that no other decision supersedes. Two partial unique indexes make a concurrent
+ * second decision on the same head fail instead of overwriting.
+ */
+export const dataQualityDecisions = pgTable(
+  'data_quality_decisions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => dataQualityIssues.id, { onDelete: 'restrict' }),
+    decisionType: text('decision_type').notNull(),
+    supersedesDecisionId: uuid('supersedes_decision_id'),
+    reason: text('reason').notNull(),
+    decidedByUserId: uuid('decided_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'dq_decision_type_chk',
+      sql`${t.decisionType} IN ('approved_fix', 'rejected', 'resolved', 'deferred', 'reversed')`
+    ),
+    check('dq_decision_reason_chk', sql`length(btrim(${t.reason})) > 0`),
+    foreignKey({
+      columns: [t.supersedesDecisionId],
+      foreignColumns: [t.id],
+      name: 'dq_decision_supersedes_fk',
+    }).onDelete('restrict'),
+    // One first decision per issue.
+    uniqueIndex('dq_decision_root_uq')
+      .on(t.issueId)
+      .where(sql`${t.supersedesDecisionId} IS NULL`),
+    // One successor per decision: this is the concurrency guard.
+    uniqueIndex('dq_decision_successor_uq')
+      .on(t.supersedesDecisionId)
+      .where(sql`${t.supersedesDecisionId} IS NOT NULL`),
+    index('dq_decision_issue_idx').on(t.issueId, t.decidedAt),
   ]
 );
 
