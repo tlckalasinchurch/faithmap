@@ -30,7 +30,7 @@ Status words: **VERIFIED** (a command or API response in this session shows it),
 | Node.js runtime | Project setting `26.x`. Branch `package.json`: `22.x`. `main`: no `engines` | VERIFIED |
 | Deployment Protection | Vercel Authentication `all`; password off; trusted IPs off | VERIFIED |
 | Environment variables | Only `PGUSER`, `PGPASSWORD` (Preview + Production). `PGPASSWORD` flagged `readable-secret`. None of the 6 required variables exists | VERIFIED |
-| Project `faithmap.puntakit` | **Still exists.** The Vercel bot comment (13:47Z) lists it with a READY Preview built from this branch. My connection cannot read it (`404`; not in `list_projects`) | VERIFIED existence. Content **BLOCKED** (no access) |
+| Project `faithmap.puntakit` | **Still exists and still builds.** The Vercel bot comment (updated 14:05:49Z, for commit `f72d22a`) lists it with a READY Preview built from this branch. My connection cannot read it (`404`; not in `list_projects`) | VERIFIED existence. Content **BLOCKED** (no access) |
 | Build and runtime logs | Production build log read: no Node version line, no error | VERIFIED |
 
 The statement "faithmap.puntakit was deleted" is **not true** at 13:47Z.
@@ -46,7 +46,7 @@ The statement "faithmap.puntakit was deleted" is **not true** at 13:47Z.
 | Point-in-time history | 21 600 s (6 hours) | VERIFIED |
 | Database and roles | `neondb`; role `neondb_owner` on both branches; passwords of the two branches differ | VERIFIED |
 | `development` content | 0 FaithMap tables, no `drizzle` schema, no FaithMap roles (re-checked at 14:00Z). Only `neon_auth` (9 tables) | VERIFIED |
-| `main` content | Size equals `development` and did not change; the last 15 Neon operations are compute start/suspend, `epc_sync` and `apply_config` (12:43Z, cause unknown). **Content never read** | **NOT VERIFIED.** I do not claim `main` is empty |
+| `main` content | Read-only check at ~14:10Z (Y1 approved): PostgreSQL 18.7, database size 7 960 kB, schemas `neon_auth` and `public`. **0 FaithMap tables**, no `drizzle` schema (no migration metadata), 0 views, 0 functions, 0 triggers. `neon_auth`: 9 tables, 8 with 0 rows, `project_config` 1 row (count only, not read). Roles: Neon system roles, `neondb_owner`, `token_roles`. No personal data can exist in FaithMap tables because none exist | VERIFIED |
 | Network restrictions (IP allow list) | Not read | NOT VERIFIED |
 | Neon API key id 3540068 (account level) | Still valid at 14:00Z | VERIFIED. Owner has not revoked it yet |
 
@@ -88,7 +88,7 @@ Not yet reviewed in depth: `ingestion`, `cares`, `team-field-points`, `growth`, 
 | ID | Item | Needed from |
 |---|---|---|
 | B-1 | `faithmap.puntakit` still builds this repository. State what it is. If it is the legacy system, disconnect it from this repository. I cannot read or change it | Owner |
-| B-2 | `main` branch content is unknown. A read needs the `main` endpoint host in the sandbox allow list (YELLOW) | Owner approval |
+| B-2 | ~~`main` branch content unknown~~ **Resolved by Y1**: `main` has no FaithMap table. The `main` endpoint host stays in the sandbox allow list until the owner removes it | Owner (cleanup) |
 | B-3 | Vercel Authentication `all` blocks LINE users on every `*.vercel.app` URL | Owner decision (see `FAITHMAP_DEPLOYMENT_COMPATIBILITY.md`, section 4) |
 | B-4 | Roles, migration, Preview variables, Node setting, pooler: all YELLOW or RED. Plan is in the three Phase A.4 documents | Owner approval |
 | B-5 | Revoke Neon API key 3540068 when discovery ends | Owner |
