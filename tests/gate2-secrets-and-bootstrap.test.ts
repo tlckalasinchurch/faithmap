@@ -107,3 +107,41 @@ describe('Gate 2: demo data is never created implicitly on a remote database', (
     expect(isExplicitSeedAllowed('pglite', {})).toBe(true);
   });
 });
+
+describe('Gate 2: FAITHMAP_TEST_ALL_POSTGRES=1 never silently falls back to PGlite', () => {
+  it('throws when FAITHMAP_TEST_ALL_POSTGRES=1 and FAITHMAP_TEST_DATABASE_URL is missing or invalid', async () => {
+    const { resolveAllPostgresTestUrl, createInMemoryTestRuntime } = await import('@/server/db/client');
+    const { setupRouteTestDb } = await import('./helpers/route-test-db');
+
+    expect(resolveAllPostgresTestUrl({})).toBeNull();
+    expect(() => resolveAllPostgresTestUrl({ FAITHMAP_TEST_ALL_POSTGRES: '1' })).toThrow(/FAITHMAP_TEST_DATABASE_URL/);
+    expect(() =>
+      resolveAllPostgresTestUrl({
+        FAITHMAP_TEST_ALL_POSTGRES: '1',
+        FAITHMAP_TEST_DATABASE_URL: 'postgresql://user:pass@localhost:5432/prod_db',
+      })
+    ).toThrow(/faithmap_test/);
+    expect(() =>
+      resolveAllPostgresTestUrl({
+        FAITHMAP_TEST_ALL_POSTGRES: '1',
+        FAITHMAP_TEST_DATABASE_URL: 'pglite://./faithmap_test',
+      })
+    ).toThrow(/postgres/);
+
+    const prevFlag = process.env.FAITHMAP_TEST_ALL_POSTGRES;
+    const prevUrl = process.env.FAITHMAP_TEST_DATABASE_URL;
+    try {
+      process.env.FAITHMAP_TEST_ALL_POSTGRES = '1';
+      delete process.env.FAITHMAP_TEST_DATABASE_URL;
+      await expect(createInMemoryTestRuntime()).rejects.toThrow(/FAITHMAP_TEST_DATABASE_URL/);
+      await expect(setupRouteTestDb('faithmap-strict-', { demoMode: false })).rejects.toThrow(
+        /FAITHMAP_TEST_DATABASE_URL/
+      );
+    } finally {
+      if (prevFlag === undefined) delete process.env.FAITHMAP_TEST_ALL_POSTGRES;
+      else process.env.FAITHMAP_TEST_ALL_POSTGRES = prevFlag;
+      if (prevUrl === undefined) delete process.env.FAITHMAP_TEST_DATABASE_URL;
+      else process.env.FAITHMAP_TEST_DATABASE_URL = prevUrl;
+    }
+  });
+});

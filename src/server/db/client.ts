@@ -106,18 +106,35 @@ export async function resetDbRuntimeForTests(): Promise<void> {
   }
 }
 
-export async function createInMemoryTestRuntime(): Promise<DbRuntime> {
-  const testPgUrl = process.env.FAITHMAP_TEST_DATABASE_URL;
-  if (
-    process.env.FAITHMAP_TEST_ALL_POSTGRES === '1' &&
-    testPgUrl &&
-    testPgUrl.includes('faithmap_test') &&
-    isRemotePostgresUrl(testPgUrl)
-  ) {
-    const pool = new Pool(buildPoolConfig(testPgUrl));
-    await pool.query(
-      'DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;'
+/**
+ * Returns FAITHMAP_TEST_DATABASE_URL when FAITHMAP_TEST_ALL_POSTGRES=1.
+ * Fails explicitly if missing or invalid so tests never silently fall back to PGlite.
+ */
+export function resolveAllPostgresTestUrl(
+  env: Record<string, string | undefined> = process.env
+): string | null {
+  if (env.FAITHMAP_TEST_ALL_POSTGRES !== '1') return null;
+  const url = env.FAITHMAP_TEST_DATABASE_URL;
+  if (!isRemotePostgresUrl(url) || !url.includes('faithmap_test')) {
+    throw new Error(
+      'FAITHMAP_TEST_ALL_POSTGRES=1 requires FAITHMAP_TEST_DATABASE_URL to be a postgres:// or postgresql:// URL whose database name contains "faithmap_test". Refusing to fall back to PGlite.'
     );
+  }
+  return url;
+}
+
+export async function createInMemoryTestRuntime(): Promise<DbRuntime> {
+  const testPgUrl = resolveAllPostgresTestUrl();
+  if (testPgUrl) {
+    const pool = new Pool(buildPoolConfig(testPgUrl));
+    try {
+      await pool.query(
+        'DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;'
+      );
+    } catch (err) {
+      await pool.end().catch(() => undefined);
+      throw err;
+    }
     const db = drizzlePg(pool, { schema }) as unknown as FaithMapDb;
     return {
       db,

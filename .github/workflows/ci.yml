@@ -36,8 +36,8 @@ jobs:
       FAITHMAP_TEST_DATABASE_URL: postgresql://faithmap_test:ci-throwaway-test-only@localhost:5432/faithmap_test_ci
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -46,5 +46,9 @@ jobs:
         run: npm run typecheck
       - name: Tests (PGlite and real PostgreSQL 16)
         run: npm test
+      - name: Tests (all suites on real PostgreSQL 16)
+        env:
+          FAITHMAP_TEST_ALL_POSTGRES: '1'
+        run: npx vitest run --fileParallelism=false --exclude tests/real-postgres.test.ts
       - name: Build
         run: npm run build

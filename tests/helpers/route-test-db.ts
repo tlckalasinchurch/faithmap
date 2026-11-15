@@ -1,7 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createDbRuntimeFromEnv, resetDbRuntimeForTests } from '@/server/db/client';
+import {
+  createDbRuntimeFromEnv,
+  resetDbRuntimeForTests,
+  resolveAllPostgresTestUrl,
+} from '@/server/db/client';
 import { ensureSchema } from '@/server/db/migrate';
 import { ensureSeeded } from '@/server/db/seed';
 
@@ -24,13 +28,10 @@ export async function setupRouteTestDb(
 
   await resetDbRuntimeForTests();
 
-  const pgUrl = process.env.FAITHMAP_TEST_DATABASE_URL;
-  const usePostgres =
-    process.env.FAITHMAP_TEST_ALL_POSTGRES === '1' &&
-    Boolean(pgUrl && pgUrl.includes('faithmap_test'));
+  const pgUrl = resolveAllPostgresTestUrl();
 
   let dir = '';
-  if (usePostgres && pgUrl) {
+  if (pgUrl) {
     process.env.DATABASE_URL = pgUrl;
     process.env.FAITHMAP_DEMO_MODE = options.demoMode ? 'true' : 'false';
     const rt = createDbRuntimeFromEnv();
