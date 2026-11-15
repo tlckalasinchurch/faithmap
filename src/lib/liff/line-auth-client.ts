@@ -1,5 +1,6 @@
 import { apiRequest, ApiClientError } from '@/lib/api-client';
 import type { LiffAdapter } from './adapter';
+import { createReplayGuard } from './replay-guard';
 
 export class LineRedirecting extends Error {
   constructor() {
@@ -32,6 +33,11 @@ async function withReplayRetry<T>(adapter: LiffAdapter, run: () => Promise<T>): 
     return await run();
   } catch (err) {
     if (err instanceof ApiClientError && err.code === 'LINE_TOKEN_REPLAYED') {
+      const guard = createReplayGuard(typeof window !== 'undefined' ? window.sessionStorage : null);
+      if (!guard.mayRetry()) {
+        throw new Error('LINE ส่งข้อมูลเดิมกลับมา กรุณาปิดแอปแล้วเปิดใหม่อีกครั้ง หรือรอสักครู่แล้วลองใหม่');
+      }
+      guard.markRetried();
       adapter.logout();
       adapter.login();
       throw new LineRedirecting();
