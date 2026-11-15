@@ -58,7 +58,7 @@ Core principles:
 | View restricted PII (phone, address, absence note `DEC-06`) | **Own group** | **Assigned groups** | **Own Body** | **No (Masked)** | **Yes** |
 | View restricted report text (`care_needs_notes`, `prayer_requests`, `DEC-15`) | **Own group** | **Assigned groups** | **Own Body** | **No** | **Yes** |
 | Meeting Brief prayer data (`DEC-16`) | — | — | Count only | Count only | Count only |
-| View Team Field Points (`DEC-17`) | No | Only the point assigned to them | Only points of their Body (phone masked) | **No** | **Yes** (all, mapping) |
+| View Team Field Points (`DEC-17`; no non-admin reads any point until every point has a Body) | No | Only the assigned point, while the account is active and holds an assignment in that Body | Only points of their active Body (phone masked) | **No** | **Yes** (all, mapping) |
 | Assign Body and coordinator to a Team Field Point (`DEC-17`) | No | No | No | No | **Yes** (audited) |
 | Read `notHeldReason`, `summaryNotes` (`DEC-18`) | Yes | Yes | Yes (own Body) | **No** | Yes |
 | Meeting Brief (`DEC-19`) | No | No | Own Body only | Organization numbers, no group names | Whole record |

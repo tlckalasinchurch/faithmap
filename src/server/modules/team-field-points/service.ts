@@ -1,11 +1,11 @@
-import { and, asc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
-import { bodies, teamFieldPoints, users } from '@/server/db/schema';
+import { assignments, bodies, cares, houseMissionGroups, teamFieldPoints, users } from '@/server/db/schema';
 import { KALASIN_TEAM_G_POINTS } from '@/lib/kalasin-field-points';
 import { recordSecurityAudit } from '../audit/service';
 import { isAdmin } from '../authz/policy';
 import { AppError } from '../errors';
-import type { ActorContext } from '../identity/service';
+import { isUsableAccount, type ActorContext } from '../identity/service';
 
 function maskPhone(phone: string | null): string | null {
   if (!phone) return null;
@@ -28,6 +28,45 @@ export interface TeamFieldPointView {
   /** Mapping fields. Only admins read the ids. Other roles get null. */
   bodyId: string | null;
   coordinatorUserId: string | null;
+  /** Admin only. Names for the assignment screen. */
+  bodyName: string | null;
+  coordinatorAccountName: string | null;
+  coordinatorAccountStatus: string | null;
+  /** Admin only. True when the linked account can still read the point (active and has an assignment in the Body). */
+  coordinatorEligible: boolean | null;
+}
+
+/**
+ * Body ids in which the user holds an active leadership assignment (direct, through a care, or through a group).
+ * A coordinator account can read a point only while this holds for the point's Body.
+ */
+export async function bodiesWithActiveAssignment(db: FaithMapDb, userId: string): Promise<Set<string>> {
+  const rows = await db
+    .select()
+    .from(assignments)
+    .where(and(eq(assignments.userId, userId), isNull(assignments.effectiveTo)));
+  const result = new Set<string>();
+  const careIds: string[] = [];
+  const groupIds: string[] = [];
+  for (const a of rows) {
+    if (a.bodyId) result.add(a.bodyId);
+    if (a.careId) careIds.push(a.careId);
+    if (a.groupId) groupIds.push(a.groupId);
+  }
+  if (careIds.length > 0) {
+    for (const c of await db.select({ bodyId: cares.bodyId }).from(cares).where(inArray(cares.id, careIds))) {
+      if (c.bodyId) result.add(c.bodyId);
+    }
+  }
+  if (groupIds.length > 0) {
+    for (const g of await db
+      .select({ bodyId: houseMissionGroups.bodyId })
+      .from(houseMissionGroups)
+      .where(inArray(houseMissionGroups.id, groupIds))) {
+      if (g.bodyId) result.add(g.bodyId);
+    }
+  }
+  return result;
 }
 
 /**
@@ -82,28 +121,55 @@ export async function listTeamFieldPoints(
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(teamFieldPoints.teamCode), asc(teamFieldPoints.pointNo));
 
-  const isOwnBody = (bodyId: string | null) => Boolean(bodyId && actor.bodyLeaderBodyIds.has(bodyId));
-  const isAssigned = (userId: string | null) => Boolean(userId && userId === actor.user.id);
-  const rows = admin ? all : all.filter((r) => isOwnBody(r.bodyId) || isAssigned(r.coordinatorUserId));
+  // Read-time checks. A Body Leader reads only the points of an active Body. A coordinator reads a point only while the
+  // account still holds an active assignment in the point's Body. A revoked steward loses access without any admin action.
+  const activeBodies = new Map(
+    (await db.select({ id: bodies.id, nameTh: bodies.nameTh, status: bodies.status }).from(bodies)).map((b) => [b.id, b])
+  );
+  const isOwnBody = (bodyId: string | null) =>
+    Boolean(bodyId && actor.bodyLeaderBodyIds.has(bodyId) && activeBodies.get(bodyId)?.status === 'active');
+  const myBodies = admin ? new Set<string>() : await bodiesWithActiveAssignment(db, actor.user.id);
+  const isAssigned = (userId: string | null, bodyId: string | null) =>
+    Boolean(userId && userId === actor.user.id && bodyId && myBodies.has(bodyId) && activeBodies.get(bodyId)?.status === 'active');
+  const rows = admin ? all : all.filter((r) => isOwnBody(r.bodyId) || isAssigned(r.coordinatorUserId, r.bodyId));
 
   if (!admin && rows.length === 0 && actor.bodyLeaderBodyIds.size === 0) {
     throw new AppError(403, 'SCOPE_FORBIDDEN', 'คุณไม่มีสิทธิ์ดูข้อมูลจุดลงพื้นที่');
   }
 
-  return rows.map((r) => ({
-    id: r.id,
-    teamCode: r.teamCode,
-    pointNo: r.pointNo,
-    pointName: r.pointName,
-    coordinatorName: r.coordinatorName ?? null,
-    phone: admin || isAssigned(r.coordinatorUserId) ? r.phoneRaw ?? null : maskPhone(r.phoneRaw ?? null),
-    latitude: r.latitude,
-    longitude: r.longitude,
-    mapsUrl: r.mapsUrl ?? null,
-    sourceSheet: r.sourceSheet,
-    bodyId: admin ? r.bodyId ?? null : null,
-    coordinatorUserId: admin ? r.coordinatorUserId ?? null : null,
-  }));
+  const accountIds = admin ? [...new Set(all.map((r) => r.coordinatorUserId).filter((x): x is string => Boolean(x)))] : [];
+  const accounts = new Map(
+    accountIds.length > 0
+      ? (await db.select().from(users).where(inArray(users.id, accountIds))).map((u) => [u.id, u])
+      : []
+  );
+  const eligibility = new Map<string, Set<string>>();
+  for (const id of accountIds) eligibility.set(id, await bodiesWithActiveAssignment(db, id));
+
+  return rows.map((r) => {
+    const account = r.coordinatorUserId ? accounts.get(r.coordinatorUserId) : undefined;
+    return {
+      id: r.id,
+      teamCode: r.teamCode,
+      pointNo: r.pointNo,
+      pointName: r.pointName,
+      coordinatorName: r.coordinatorName ?? null,
+      phone: admin || isAssigned(r.coordinatorUserId, r.bodyId) ? r.phoneRaw ?? null : maskPhone(r.phoneRaw ?? null),
+      latitude: r.latitude,
+      longitude: r.longitude,
+      mapsUrl: r.mapsUrl ?? null,
+      sourceSheet: r.sourceSheet,
+      bodyId: admin ? r.bodyId ?? null : null,
+      coordinatorUserId: admin ? r.coordinatorUserId ?? null : null,
+      bodyName: admin && r.bodyId ? activeBodies.get(r.bodyId)?.nameTh ?? null : null,
+      coordinatorAccountName: admin ? account?.displayName ?? null : null,
+      coordinatorAccountStatus: admin ? account?.status ?? null : null,
+      coordinatorEligible:
+        admin && r.coordinatorUserId
+          ? Boolean(account && account.status === 'active' && r.bodyId && eligibility.get(account.id)?.has(r.bodyId))
+          : null,
+    };
+  });
 }
 
 /**
@@ -129,9 +195,21 @@ export async function assignTeamFieldPoint(
     }
   }
   if (input.coordinatorUserId) {
+    // A coordinator link needs a Body, because the account reads the point only inside that Body.
+    if (!input.bodyId) {
+      throw new AppError(400, 'COORDINATOR_NEEDS_BODY', 'ต้องเลือกบอดี้ก่อนกำหนดผู้ประสานงาน');
+    }
     const [user] = await db.select().from(users).where(eq(users.id, input.coordinatorUserId));
-    if (!user || user.status !== 'active') {
+    if (!user || !(await isUsableAccount(db, user))) {
       throw new AppError(400, 'COORDINATOR_INVALID', 'ไม่พบบัญชีผู้ประสานงานที่ใช้งานอยู่');
+    }
+    const inBody = await bodiesWithActiveAssignment(db, user.id);
+    if (!inBody.has(input.bodyId)) {
+      throw new AppError(
+        400,
+        'COORDINATOR_OUT_OF_SCOPE',
+        'ผู้ประสานงานต้องมีหน้าที่ที่ใช้งานอยู่ในบอดี้เดียวกับจุดนี้'
+      );
     }
   }
 

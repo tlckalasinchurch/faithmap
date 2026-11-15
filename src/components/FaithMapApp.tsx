@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Map as MapIcon,
+  MapPin,
   ScrollText,
   Sparkles,
   Users,
@@ -30,6 +31,7 @@ import { KalasinMapTab } from './KalasinMapTab';
 import { PastoralCareTab } from './PastoralCareTab';
 import { GovernanceTab } from './GovernanceTab';
 import { DataIngestionTab } from './DataIngestionTab';
+import { TeamFieldPointsTab } from './TeamFieldPointsTab';
 
 interface AuthState {
   authenticated: boolean;
@@ -220,6 +222,9 @@ export function FaithMapApp() {
     workspace.actor.bodyLeaderBodyIds.length > 0
       ? [{ id: 'ingestion', label: 'นำเข้า & ตรวจข้อมูล', Icon: ClipboardCheck }]
       : []),
+    ...(workspace.actor.user.systemRole === 'super_admin' || workspace.actor.user.systemRole === 'admin'
+      ? [{ id: 'field-points', label: 'จุดลงพื้นที่', Icon: MapPin }]
+      : []),
   ];
 
   return (
@@ -382,6 +387,8 @@ export function FaithMapApp() {
         {activeTab === 'governance' && (
           <GovernanceTab workspace={workspace} onRefresh={() => loadApp()} />
         )}
+
+        {activeTab === 'field-points' && <TeamFieldPointsTab workspace={workspace} />}
 
         {activeTab === 'ingestion' && (
           <DataIngestionTab workspace={workspace} onRefreshWorkspace={() => loadApp()} />

@@ -24,6 +24,7 @@ import {
 } from '@/server/modules/reporting/service';
 import {
   assignTeamFieldPoint,
+  bodiesWithActiveAssignment,
   listTeamFieldPoints,
   syncTeamGFieldPoints,
 } from '@/server/modules/team-field-points/service';
@@ -171,6 +172,36 @@ describe('Q-7 and Q-9: Meeting Brief by role and scope', () => {
     });
   });
 
+  it('version 1 brief: admin sees the stored lists, pastor sees counts only, no follow-up title for anyone', async () => {
+    await withDb(async (rt, admin) => {
+      const pastor = await actorFor(rt, SEED_IDS.users.pastor);
+      const v1 = (a: Awaited<ReturnType<typeof listMeetingBriefs>>) => a.find((b) => !(b.sectionsJson as Record<string, unknown>).briefSchemaVersion)!;
+      const asAdmin = v1(await listMeetingBriefs(rt.db, admin));
+      expect(asAdmin.viewScope).toBe('organization_detail');
+      expect(JSON.stringify(asAdmin)).toContain('กลุ่มบ้านหนองกุง');
+      const asPastor = v1(await listMeetingBriefs(rt.db, pastor));
+      expect(asPastor.viewScope).toBe('organization_aggregate');
+      expect(JSON.stringify(asPastor)).not.toContain('กลุ่มบ้าน');
+      expect(JSON.stringify(asPastor)).not.toContain('ติดตามสมาชิกขาดประชุม');
+      expect((asPastor.sectionsJson as Record<string, unknown>).section8OpenFollowUpsCount).toBe(1);
+    });
+  });
+
+  it('a person with two roles gets the union: a pastor who also leads a Body sees that Body by name, no other Body', async () => {
+    await withDb(async (rt, admin) => {
+      await assignLeadershipRole(rt.db, admin, { userId: SEED_IDS.users.pastor, scopeType: 'body', bodyId: SEED_IDS.bodies.south, roleType: 'body_leader' });
+      const both = await actorFor(rt, SEED_IDS.users.pastor);
+      const brief = await makeBrief(rt, admin);
+      const view = (await listMeetingBriefs(rt.db, both)).find((b) => b.id === brief.id)!;
+      expect(view.viewScope).toBe('organization_aggregate');
+      const groups = await rt.db.select().from(schema.houseMissionGroups);
+      const text = JSON.stringify(view);
+      for (const g of groups.filter((x) => x.bodyId === SEED_IDS.bodies.north)) expect(text).not.toContain(g.nameTh);
+      const sectionsText = JSON.stringify(view.sectionsJson);
+      expect(sectionsText).toContain('กลุ่มพันธกิจบ้านยางตลาด');
+    });
+  });
+
   it('refuses people without a brief role', async () => {
     await withDb(async (rt) => {
       for (const id of [SEED_IDS.users.leaderNongkung]) {
@@ -229,7 +260,7 @@ describe('Q-8: team field point mapping', () => {
         assignTeamFieldPoint(rt.db, admin, { pointId: point!.id, bodyId: '00000000-0000-4000-8000-000000000000', coordinatorUserId: null })
       ).rejects.toMatchObject({ code: 'BODY_INVALID' });
       await expect(
-        assignTeamFieldPoint(rt.db, admin, { pointId: point!.id, bodyId: null, coordinatorUserId: '00000000-0000-4000-8000-000000000000' })
+        assignTeamFieldPoint(rt.db, admin, { pointId: point!.id, bodyId: SEED_IDS.bodies.north, coordinatorUserId: '00000000-0000-4000-8000-000000000000' })
       ).rejects.toMatchObject({ code: 'COORDINATOR_INVALID' });
       await assignTeamFieldPoint(rt.db, admin, { pointId: point!.id, bodyId: SEED_IDS.bodies.north, coordinatorUserId: null });
       const logs = await rt.db.select().from(schema.securityAuditLogs);
@@ -241,38 +272,154 @@ describe('Q-8: team field point mapping', () => {
     await withDb(async (rt, admin) => {
       await syncTeamGFieldPoints(rt.db, admin);
       const points = await rt.db.select().from(schema.teamFieldPoints);
-      // Admin maps the first point to the south Body with an assigned coordinator, every other point to the north Body.
+      const coordId = SEED_IDS.users.leaderNongkung;
+      const [coordBody] = [...(await bodiesWithActiveAssignment(rt.db, coordId))];
+      expect(coordBody).toBeDefined();
+      const otherBody = coordBody === SEED_IDS.bodies.north ? SEED_IDS.bodies.south : SEED_IDS.bodies.north;
       const [first, ...rest] = points;
-      await assignTeamFieldPoint(rt.db, admin, {
-        pointId: first!.id,
-        bodyId: SEED_IDS.bodies.south,
-        coordinatorUserId: SEED_IDS.users.leaderNongkung,
-      });
-      // Gate: one point is still unmapped, so nobody except admin reads anything.
-      if (rest.length > 1) {
-        for (const p of rest.slice(1)) {
-          await assignTeamFieldPoint(rt.db, admin, { pointId: p.id, bodyId: SEED_IDS.bodies.north, coordinatorUserId: null });
-        }
-        const north = await actorFor(rt, SEED_IDS.users.bodyLeaderNorth);
-        await expect(listTeamFieldPoints(rt.db, north)).rejects.toMatchObject({ status: 403 });
+
+      // Not complete: one point has no Body. Nobody except an admin reads anything.
+      await assignTeamFieldPoint(rt.db, admin, { pointId: first!.id, bodyId: coordBody!, coordinatorUserId: coordId });
+      for (const p of rest.slice(1)) {
+        await assignTeamFieldPoint(rt.db, admin, { pointId: p.id, bodyId: otherBody, coordinatorUserId: null });
       }
-      await assignTeamFieldPoint(rt.db, admin, { pointId: rest[0]!.id, bodyId: SEED_IDS.bodies.north, coordinatorUserId: null });
+      const leaderOf = (b: string) => (b === SEED_IDS.bodies.north ? SEED_IDS.users.bodyLeaderNorth : SEED_IDS.users.standbyLeaderSouth);
+      await assignLeadershipRole(rt.db, admin, { userId: SEED_IDS.users.standbyLeaderSouth, scopeType: 'body', bodyId: SEED_IDS.bodies.south, roleType: 'body_leader' });
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, leaderOf(otherBody)))).rejects.toMatchObject({ status: 403 });
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, coordId))).rejects.toMatchObject({ status: 403 });
 
-      const north = await actorFor(rt, SEED_IDS.users.bodyLeaderNorth);
-      const seenNorth = await listTeamFieldPoints(rt.db, north);
-      expect(seenNorth).toHaveLength(points.length - 1);
-      expect(seenNorth.some((p) => p.id === first!.id)).toBe(false);
-      expect(seenNorth.every((p) => p.bodyId === null && p.coordinatorUserId === null)).toBe(true);
-      expect(seenNorth.every((p) => p.phone === null || p.phone.startsWith('***'))).toBe(true);
+      // Complete.
+      await assignTeamFieldPoint(rt.db, admin, { pointId: rest[0]!.id, bodyId: otherBody, coordinatorUserId: null });
+      const other = await listTeamFieldPoints(rt.db, await actorFor(rt, leaderOf(otherBody)));
+      expect(other).toHaveLength(points.length - 1);
+      expect(other.some((p) => p.id === first!.id)).toBe(false);
+      expect(other.every((p) => p.bodyId === null && p.coordinatorUserId === null && p.bodyName === null && p.coordinatorEligible === null)).toBe(true);
+      expect(other.every((p) => p.phone === null || p.phone.startsWith('***'))).toBe(true);
 
-      const coordinator = await actorFor(rt, SEED_IDS.users.leaderNongkung);
-      const seenCoord = await listTeamFieldPoints(rt.db, coordinator);
+      const seenCoord = await listTeamFieldPoints(rt.db, await actorFor(rt, coordId));
       expect(seenCoord.map((p) => p.id)).toEqual([first!.id]);
+      expect(seenCoord[0]!.phone).not.toMatch(/^\*\*\*/);
 
-      const pastor = await actorFor(rt, SEED_IDS.users.pastor);
-      await expect(listTeamFieldPoints(rt.db, pastor)).rejects.toMatchObject({ status: 403 });
-      const stranger = await actorFor(rt, SEED_IDS.users.standbyLeaderSouth);
-      await expect(listTeamFieldPoints(rt.db, stranger)).rejects.toMatchObject({ status: 403 });
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, SEED_IDS.users.pastor))).rejects.toMatchObject({ status: 403 });
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, SEED_IDS.users.admin))).resolves.toHaveLength(points.length);
+    });
+  });
+
+  async function mapAll(rt: DbRuntime, admin: ActorContext, bodyId: string) {
+    await syncTeamGFieldPoints(rt.db, admin);
+    const points = await rt.db.select().from(schema.teamFieldPoints);
+    for (const p of points) await assignTeamFieldPoint(rt.db, admin, { pointId: p.id, bodyId, coordinatorUserId: null });
+    return points;
+  }
+
+  it('validation: refuses inactive or unknown Body, inactive user, a coordinator outside the Body, and a coordinator without a Body', async () => {
+    await withDb(async (rt, admin) => {
+      const points = await mapAll(rt, admin, SEED_IDS.bodies.north);
+      const pid = points[0]!.id;
+      const coordId = SEED_IDS.users.leaderNongkung;
+      const [coordBody] = [...(await bodiesWithActiveAssignment(rt.db, coordId))];
+      const wrongBody = coordBody === SEED_IDS.bodies.north ? SEED_IDS.bodies.south : SEED_IDS.bodies.north;
+
+      await rt.db.update(schema.bodies).set({ status: 'inactive' }).where(eq(schema.bodies.id, wrongBody));
+      await expect(assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: wrongBody, coordinatorUserId: null })).rejects.toMatchObject({ code: 'BODY_INVALID' });
+      await rt.db.update(schema.bodies).set({ status: 'active' }).where(eq(schema.bodies.id, wrongBody));
+
+      await expect(assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: wrongBody, coordinatorUserId: coordId })).rejects.toMatchObject({ code: 'COORDINATOR_OUT_OF_SCOPE' });
+      await expect(assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: null, coordinatorUserId: coordId })).rejects.toMatchObject({ code: 'COORDINATOR_NEEDS_BODY' });
+      await expect(assignTeamFieldPoint(rt.db, admin, { pointId: '00000000-0000-4000-8000-000000000000', bodyId: null, coordinatorUserId: null })).rejects.toMatchObject({ code: 'POINT_NOT_FOUND' });
+
+      await rt.db.update(schema.users).set({ status: 'suspended' }).where(eq(schema.users.id, coordId));
+      await expect(assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: coordBody!, coordinatorUserId: coordId })).rejects.toMatchObject({ code: 'COORDINATOR_INVALID' });
+      // Nothing was written by the refused calls.
+      const [row] = await rt.db.select().from(schema.teamFieldPoints).where(eq(schema.teamFieldPoints.id, pid));
+      expect(row!.coordinatorUserId).toBeNull();
+    });
+  });
+
+  it('change of coordinator: the old account loses the point, the new account gets it', async () => {
+    await withDb(async (rt, admin) => {
+      const coordA = SEED_IDS.users.leaderNongkung;
+      const [bodyA] = [...(await bodiesWithActiveAssignment(rt.db, coordA))];
+      const points = await mapAll(rt, admin, bodyA!);
+      // A second account with a coordinator role in the same Body.
+      const group = await createGroup(rt.db, admin, { groupCode: 'FP-B', bodyId: bodyA!, nameTh: 'กลุ่มทดสอบผู้ประสานงาน', district: 'เมืองกาฬสินธุ์' });
+      await assignLeadershipRole(rt.db, admin, { userId: SEED_IDS.users.standbyLeaderSouth, scopeType: 'group', groupId: group.id, roleType: 'coordinator' });
+      const coordB = SEED_IDS.users.standbyLeaderSouth;
+      const pid = points[0]!.id;
+
+      await assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: bodyA!, coordinatorUserId: coordA });
+      expect((await listTeamFieldPoints(rt.db, await actorFor(rt, coordA))).map((p) => p.id)).toEqual([pid]);
+      await assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: bodyA!, coordinatorUserId: coordB });
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, coordA))).rejects.toMatchObject({ status: 403 });
+      expect((await listTeamFieldPoints(rt.db, await actorFor(rt, coordB))).map((p) => p.id)).toEqual([pid]);
+      const logs = (await rt.db.select().from(schema.securityAuditLogs)).filter((l) => l.action === 'TEAM_FIELD_POINT_ASSIGNED');
+      expect(logs.length).toBeGreaterThanOrEqual(2);
+      const phones = (await rt.db.select().from(schema.teamFieldPoints)).map((p) => p.phoneRaw).filter((x): x is string => Boolean(x));
+      expect(phones.length).toBeGreaterThan(0);
+      for (const ph of phones) expect(JSON.stringify(logs)).not.toContain(ph);
+    });
+  });
+
+  it('a deleted coordinator account clears the link and exposes nothing; a revoked or suspended coordinator loses access', async () => {
+    await withDb(async (rt, admin) => {
+      const coordId = SEED_IDS.users.leaderNongkung;
+      const [bodyId] = [...(await bodiesWithActiveAssignment(rt.db, coordId))];
+      const points = await mapAll(rt, admin, bodyId!);
+      const pid = points[0]!.id;
+      await assignTeamFieldPoint(rt.db, admin, { pointId: pid, bodyId: bodyId!, coordinatorUserId: coordId });
+
+      // Revoked assignment: access ends at once, with no admin action. The admin screen shows the account as not eligible.
+      await rt.db.update(schema.assignments).set({ effectiveTo: new Date() }).where(eq(schema.assignments.userId, coordId));
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, coordId))).rejects.toMatchObject({ status: 403 });
+      const asAdmin = (await listTeamFieldPoints(rt.db, admin)).find((p) => p.id === pid)!;
+      expect(asAdmin.coordinatorEligible).toBe(false);
+    });
+  });
+
+  it('a deleted coordinator account: the foreign key clears the link, the Body link stays, nobody gains access', async () => {
+    await withDb(async (rt, admin) => {
+      const [bodyId] = [SEED_IDS.bodies.north];
+      const points = await mapAll(rt, admin, bodyId);
+      const [temp] = await rt.db
+        .insert(schema.users)
+        .values({ username: 'tmp_coord', displayName: 'ผู้ประสานงานชั่วคราว', status: 'active', passwordHash: 'not-a-real-hash' })
+        .returning();
+      const group = await createGroup(rt.db, admin, { groupCode: 'FP-DEL', bodyId, nameTh: 'กลุ่มทดสอบลบบัญชี', district: 'เมืองกาฬสินธุ์' });
+      await assignLeadershipRole(rt.db, admin, { userId: temp!.id, scopeType: 'group', groupId: group.id, roleType: 'coordinator' });
+      await assignTeamFieldPoint(rt.db, admin, { pointId: points[0]!.id, bodyId, coordinatorUserId: temp!.id });
+      expect((await listTeamFieldPoints(rt.db, await actorFor(rt, temp!.id))).map((p) => p.id)).toEqual([points[0]!.id]);
+
+      await rt.db.delete(schema.users).where(eq(schema.users.id, temp!.id));
+      const [row] = await rt.db.select().from(schema.teamFieldPoints).where(eq(schema.teamFieldPoints.id, points[0]!.id));
+      expect(row!.coordinatorUserId).toBeNull();
+      expect(row!.bodyId).toBe(bodyId);
+      // Others keep exactly the access they had; the pastor still has none.
+      await expect(listTeamFieldPoints(rt.db, await actorFor(rt, SEED_IDS.users.pastor))).rejects.toMatchObject({ status: 403 });
+      expect((await listTeamFieldPoints(rt.db, await actorFor(rt, SEED_IDS.users.bodyLeaderNorth))).length).toBe(points.length);
+    });
+  });
+
+  it('a deleted Body unmaps its points, so the gate closes and no non-admin reads any point', async () => {
+    await withDb(async (rt, admin) => {
+      const points = await mapAll(rt, admin, SEED_IDS.bodies.north);
+      const [extra] = await rt.db.insert(schema.bodies).values({ code: 'TMP-DEL', nameTh: 'บอดี้ชั่วคราว' }).returning();
+      await assignTeamFieldPoint(rt.db, admin, { pointId: points[0]!.id, bodyId: extra!.id, coordinatorUserId: null });
+      const north = await actorFor(rt, SEED_IDS.users.bodyLeaderNorth);
+      expect((await listTeamFieldPoints(rt.db, north)).length).toBe(points.length - 1);
+      await rt.db.delete(schema.bodies).where(eq(schema.bodies.id, extra!.id));
+      const [row] = await rt.db.select().from(schema.teamFieldPoints).where(eq(schema.teamFieldPoints.id, points[0]!.id));
+      expect(row!.bodyId).toBeNull();
+      await expect(listTeamFieldPoints(rt.db, north)).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
+  it('an inactive Body: its Body Leader no longer reads its points', async () => {
+    await withDb(async (rt, admin) => {
+      await mapAll(rt, admin, SEED_IDS.bodies.north);
+      const north = await actorFor(rt, SEED_IDS.users.bodyLeaderNorth);
+      expect((await listTeamFieldPoints(rt.db, north)).length).toBeGreaterThan(0);
+      await rt.db.update(schema.bodies).set({ status: 'inactive' }).where(eq(schema.bodies.id, SEED_IDS.bodies.north));
+      expect(await listTeamFieldPoints(rt.db, north)).toEqual([]);
     });
   });
 

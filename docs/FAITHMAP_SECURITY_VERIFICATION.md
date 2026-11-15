@@ -128,9 +128,41 @@ Because no brief exists, the format change (`DEC-16`) needs no clean-up. The nex
 | ID | Status | Evidence |
 |---|---|---|
 | Q-5 | Done | `redactRestrictedReportText` nulls `notHeldReason`. Test `gate16` |
-| Q-6 | Done | Same function nulls `summaryNotes`. Test `gate16` |
-| Q-7 | Done | Brief stores `section8OpenFollowUpsCount` and a count line. Test checks that no follow-up title is in the stored record or in any view |
-| Q-8 | Code and migration `0004` ready. **Not run on Neon** | `drizzle/0004_team_field_points_scope.sql` (4 nullable columns, 2 indexes, 3 foreign keys, no data change). `assignTeamFieldPoint`, `assign_point` action, mapping gate. Test `gate16` |
-| Q-9 | Done | `src/server/modules/insights/brief-view.ts`. Only `insights/service.ts` reads `meeting_briefs`. The generate action also returns the built view. Structure test in `gate16` |
+| Q-6 | Done | Same function nulls `summaryNotes`. Test `gate16`, route test `gate17` |
+| Q-7 | Done | Brief stores `section8OpenFollowUpsCount` and a count line. Test checks that no follow-up title is in the stored record or in any view (version 1 and 2) |
+| Q-8 | Code, screen and migration `0004` ready. **Not run on Neon** | `drizzle/0004_team_field_points_scope.sql`. `assignTeamFieldPoint`, `assign_point` action, screen "จุดลงพื้นที่" (admin only), mapping gate. Tests `gate16`, `gate17` |
+| Q-9 | Done | `src/server/modules/insights/brief-view.ts`. Only `insights/service.ts` reads `meeting_briefs`. The generate action returns the built view. Structure test and route tests |
 
-Known limits: the demo seed brief is a version 1 record, so a Body Leader sees no numbers for it. There is no screen yet for the assignment workflow; it is an API action. Blocked-group notes in a brief hold a system reason code, not user text.
+#### 2.8.1 Field point rules in code
+
+| Rule | Where | Test |
+|---|---|---|
+| Only an admin assigns | `assignTeamFieldPoint`, route schema `assign_point` | `gate16`, `gate17` (403 for Body Leader, pastor, group leader) |
+| Body must exist and be `active` | `assignTeamFieldPoint` (`BODY_INVALID`) | `gate16` |
+| Coordinator needs a Body on the point (`COORDINATOR_NEEDS_BODY`) | same | `gate16` |
+| Coordinator account must be usable: `active` and has a login method (`COORDINATOR_INVALID`) | `isUsableAccount` | `gate16` (unknown id, suspended account) |
+| Coordinator must hold an active assignment in the point's Body (`COORDINATOR_OUT_OF_SCOPE`) | `bodiesWithActiveAssignment` | `gate16` |
+| A refused call writes nothing | validation runs before the update | `gate16` |
+| Read gate: no non-admin reads while one point has `body_id` NULL | `getFieldPointMappingStatus` | `gate16`, `gate17` |
+| Body Leader reads only points of an `active` Body that the person leads | `listTeamFieldPoints` | `gate16` (inactive Body test) |
+| Coordinator reads a point only while the account holds an active assignment in the point's Body | same | `gate16` (revoked assignment test) |
+| Change of coordinator moves access at once | same | `gate16` |
+| Deleted coordinator account: foreign key sets the link to NULL, Body link stays, nobody gains access | schema `ON DELETE SET NULL` | `gate16` |
+| Deleted Body: its points become unmapped, the gate closes for every non-admin | schema `ON DELETE SET NULL` | `gate16` |
+| Sync from the source list keeps the links | upsert does not write the link columns | `gate16` |
+| Audit record holds ids only, no phone number | `recordSecurityAudit` metadata | `gate16` |
+
+Side effect to know: deleting a Body (or clearing the Body of one point) closes the gate for every non-admin until an admin maps the point again. This is fail closed on purpose.
+
+#### 2.8.2 Meeting Brief per role
+
+| Brief | Admin | Pastor | Body Leader | Pastor who also leads a Body | Other |
+|---|---|---|---|---|---|
+| Version 2 | Whole record, group names | Organization numbers, no group names | Numbers and names of the led Body | Organization numbers, plus names of the led Body | 403 |
+| Version 1 (made before Q-9) | Stored numbers and lists as they are, follow-up count only | Organization numbers, counts instead of lists | No numbers. A notice tells the person to ask an admin | Organization numbers, counts instead of lists | 403 |
+
+Known limits: the demo seed brief is version 1. The first real brief made after this code is version 2. Blocked-group notes in a brief hold a system reason code, not user text.
+
+#### 2.8.3 Open point Q-10 (new)
+
+The coordinator rule (active assignment in the same Body) is stricter than the owner decision. A coordinator of a field point who holds no church role in the Body cannot be assigned. Owner can relax it. See `FAITHMAP_NEON_DEVELOPMENT_PLAN.md`, D-4.
