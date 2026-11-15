@@ -24,6 +24,15 @@ import {
 import { dispatchNotification } from '../notifications/service';
 import type { ActorContext } from '../identity/service';
 import { ensureActiveReportingPeriod } from '../reporting/service';
+import {
+  BRIEF_SCHEMA_VERSION,
+  actionDecisionLines,
+  buildMeetingBriefView,
+  openFollowUpCountLine,
+  prayerCountLine,
+  resolveBriefScope,
+  type BriefBodySlice,
+} from './brief-view';
 
 export interface CanonicalMetrics {
   activeBodies: number;
@@ -236,6 +245,55 @@ export async function generateMeetingBriefForPeriod(
   // and nobody can remove it from a brief later. The brief keeps only the number of groups that sent a request.
   const groupsWithPrayerRequests = nonDraftReports.filter((r) => Boolean(r.prayerRequests?.trim())).length;
 
+  // Q-9: the brief also stores one slice per Body. A Body Leader reads only the slice of the own Body.
+  // A slice holds numbers and group names only. It never holds free text.
+  const bodyOfGroup = new Map(snapshots.map((x) => [x.groupId, x.bodyId]));
+  const groupName = (groupId: string) => snapshots.find((x) => x.groupId === groupId)?.groupNameSnapshot ?? groupId;
+  // Groups without a Body get their own slice, so the organization totals stay complete. No Body Leader owns it.
+  const UNASSIGNED = 'unassigned';
+  const sliceBodies: Array<{ id: string; nameTh: string }> = [
+    ...allBodies.map((b) => ({ id: b.id, nameTh: b.nameTh })),
+    ...(expectedSnapshots.some((x) => !x.bodyId) || nonDraftReports.some((r) => !r.bodyId)
+      ? [{ id: UNASSIGNED, nameTh: 'รอจัดสรรบอดี้' }]
+      : []),
+  ];
+  const keyOf = (id: string) => (id === UNASSIGNED ? null : id);
+  const bodySlices: BriefBodySlice[] = sliceBodies.map((b) => {
+    const bSnaps = expectedSnapshots.filter((x) => (x.bodyId ?? null) === keyOf(b.id));
+    const bReports = nonDraftReports.filter((r) => (r.bodyId ?? null) === keyOf(b.id));
+    const held = bReports.filter((r) => r.meetingHeld === true);
+    return {
+      bodyId: b.id,
+      bodyName: b.nameTh,
+      activeGroups: bSnaps.length,
+      submittedReports: bReports.length,
+      approvedReports: bReports.filter((r) => r.status === 'approved').length,
+      missingReports: bSnaps.filter((x) => {
+        const r = reportByGroup.get(x.groupId);
+        return !r || r.status === 'draft';
+      }).length,
+      heldMeetings: held.length,
+      confirmedNotHeld: bReports.filter((r) => r.meetingHeld === false).length,
+      lateReports: bReports.filter((r) => r.isLate).length,
+      blockedReports: bReports.filter((r) => r.isBlocked).length,
+      periodAttendance: held.reduce((a, r) => a + r.totalAttendees, 0),
+      newVisitors: held.reduce((a, r) => a + r.newVisitorsCount, 0),
+      returningVisitors: held.reduce((a, r) => a + r.returningVisitorsCount, 0),
+      openFollowUps: openFollowUps.filter((f) => (bodyOfGroup.get(f.groupId) ?? null) === keyOf(b.id)).length,
+      groupsWithPrayerRequests: bReports.filter((r) => Boolean(r.prayerRequests?.trim())).length,
+      missingGroupNames: bSnaps
+        .filter((x) => {
+          const r = reportByGroup.get(x.groupId);
+          return !r || r.status === 'draft';
+        })
+        .map((x) => x.groupNameSnapshot),
+      lateGroupNames: bReports.filter((r) => r.isLate).map((r) => groupName(r.groupId)),
+      blockedGroupNotes: bReports
+        .filter((r) => r.isBlocked)
+        .map((r) => `${groupName(r.groupId)}: ${r.blockedReason ?? 'ติดขัด'}`),
+    };
+  });
+
   const metrics: CanonicalMetrics = {
     activeBodies: allBodies.filter((b) => b.status === 'active').length,
     activeGroups: expectedSnapshots.length,
@@ -290,20 +348,13 @@ export async function generateMeetingBriefForPeriod(
       totalNewVisitors: metrics.newVisitors,
       returningVisitors: metrics.returningVisitors,
     },
-    section8OpenFollowUps: openFollowUps.slice(0, 10).map((f) => f.title),
+    section8OpenFollowUps: openFollowUpCountLine(metrics.openFollowUps),
+    section8OpenFollowUpsCount: metrics.openFollowUps,
     section9GroupsWithPrayerRequests: groupsWithPrayerRequests,
-    section9PrayerAndCareThemes:
-      groupsWithPrayerRequests > 0
-        ? [`มี ${groupsWithPrayerRequests} กลุ่มแจ้งหัวข้ออธิษฐานในสัปดาห์นี้ (ข้อความเป็นข้อมูลจำกัด ดูได้เฉพาะผู้ดูแลกลุ่ม หัวหน้าบอดี้ และผู้ดูแลระบบ)`]
-        : ['ไม่มีกลุ่มแจ้งหัวข้ออธิษฐานในสัปดาห์นี้'],
-    section10ActionDecisions: [
-      ...(blockedItems.length > 0
-        ? [`เร่งแก้ปัญหา Blocked Workflow (${blockedItems.length} กลุ่ม) ในระดับผู้ดูแลระบบ`]
-        : []),
-      ...(missingGroups.length > 0
-        ? [`ติดตามรายงานที่ยังไม่ส่ง ${missingGroups.length} กลุ่ม`]
-        : ['ทุกกลุ่มส่งรายงานครบถ้วน']),
-    ],
+    section9PrayerAndCareThemes: prayerCountLine(groupsWithPrayerRequests),
+    section10ActionDecisions: actionDecisionLines(blockedItems.length, missingGroups.length),
+    briefSchemaVersion: BRIEF_SCHEMA_VERSION,
+    bodySlices,
   };
 
   try {
@@ -340,7 +391,7 @@ export async function generateMeetingBriefForPeriod(
 }
 
 export async function listMeetingBriefs(db: FaithMapDb, actor: ActorContext) {
-  if (!isGlobalMetricsReader(actor) && actor.bodyLeaderBodyIds.size === 0) {
+  if (!resolveBriefScope(actor)) {
     throw new AppError(403, 'FORBIDDEN', 'เฉพาะผู้นำบอดี้ ศิษยาภิบาล หรือผู้ดูแลระบบที่เข้าดูสรุปประชุมได้');
   }
   const rows = await db
@@ -349,8 +400,9 @@ export async function listMeetingBriefs(db: FaithMapDb, actor: ActorContext) {
     .orderBy(desc(meetingBriefs.generatedAt));
   const periods = await db.select().from(reportingPeriods);
   const periodMap = new Map(periods.map((p) => [p.id, p]));
+  // Q-9: every response is built for the caller's role and scope. The stored row stays as it is.
   return rows.map((b) => ({
-    ...b,
+    ...buildMeetingBriefView(b, actor),
     periodKey: periodMap.get(b.periodId)?.periodKey ?? '',
     startDate: periodMap.get(b.periodId)?.startDate ?? '',
     endDate: periodMap.get(b.periodId)?.endDate ?? '',

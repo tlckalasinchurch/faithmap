@@ -179,3 +179,19 @@ Not tested: rollback on Neon.
 | G-4 | Step 7 (create admin) | Yes, not run |
 | G-5 | Create a restore point or child branch (P-7) | Yes, not run |
 | G-6 | Any run on `main` | Not planned |
+
+## Addendum: migration 0004 (prepared, not run)
+
+File: `drizzle/0004_team_field_points_scope.sql`. Owner decision Q-8 (2026-11-15).
+
+| Item | Value |
+|---|---|
+| Change | 4 nullable columns on `team_field_points` (`body_id`, `coordinator_user_id`, `assigned_by_user_id`, `assigned_at`), 3 foreign keys (`ON DELETE SET NULL`), 2 indexes |
+| Data change | None. No backfill. Old rows keep NULL |
+| Destructive | No. No DROP, no NOT NULL, no default |
+| Run by | `faithmap_migrator`, after 0000 to 0003, in the same approved Y6 step. Not run on Neon yet |
+| Grants | `faithmap_app` already holds table-level SELECT/INSERT/UPDATE/DELETE on this table. No grant change |
+| Legacy NULL rows | Match nobody. Only admins read them until an admin maps each point (`assign_point`). The system does not infer links from names or phones |
+| Mapping gate | No non-admin reads any point while one point has `body_id` NULL |
+| Rollback | Before any mapping: `ALTER TABLE team_field_points DROP COLUMN` for the four columns (drops indexes and keys). After mapping, the links are lost. Take a Neon branch restore point first |
+| Verification | After Y6: count columns, count NULL rows (all rows), confirm a non-admin gets 403 |

@@ -228,10 +228,17 @@ export const teamFieldPoints = pgTable(
     longitude: doublePrecision('longitude').notNull(),
     mapsUrl: text('maps_url'),
     sourceSheet: text('source_sheet').notNull().default('kalasin-field-points'),
+    // DEC-17 / Q-8: who may read the point. Both stay NULL until an admin maps the point. NULL matches nobody.
+    bodyId: uuid('body_id').references(() => bodies.id, { onDelete: 'set null' }),
+    coordinatorUserId: uuid('coordinator_user_id').references(() => users.id, { onDelete: 'set null' }),
+    assignedByUserId: uuid('assigned_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    index('team_field_points_body_idx').on(t.bodyId),
+    index('team_field_points_coordinator_idx').on(t.coordinatorUserId),
     uniqueIndex('team_field_points_team_no_uidx').on(t.teamCode, t.pointNo),
     check(
       'team_field_points_coords_chk',

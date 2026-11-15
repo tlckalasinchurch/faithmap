@@ -29,6 +29,13 @@
       "when": 1794716370159,
       "tag": "0003_data_quality_decisions_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794759869214,
+      "tag": "0004_team_field_points_scope",
+      "breakpoints": true
     }
   ]
 }

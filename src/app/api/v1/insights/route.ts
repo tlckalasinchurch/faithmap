@@ -3,6 +3,7 @@ import { readJsonBody, safeValidationIssues } from '@/server/http/body';
 import { z } from 'zod';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
+import { buildMeetingBriefView } from '@/server/modules/insights/brief-view';
 import {
   canTriggerBrief,
   exportScopedCsvData,
@@ -71,7 +72,8 @@ export async function POST(req: NextRequest) {
         actorUserId: actor.user.id,
         isCronJob: false,
       });
-      return NextResponse.json({ ok: true, brief });
+      // Q-9: the response is built for the caller, the stored row is not returned as it is.
+      return NextResponse.json({ ok: true, brief: buildMeetingBriefView(brief, actor) });
     }
 
     if (data.action === 'mark_notification_read') {

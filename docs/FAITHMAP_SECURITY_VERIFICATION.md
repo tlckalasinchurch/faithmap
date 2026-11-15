@@ -70,10 +70,11 @@ Roles: GL = Group Leader of the group; CC = Care Leader or Coordinator assigned 
 | `careNeedsNotes` | Yes | Yes | Yes | **No** | Yes | No | Done (`DEC-15`) |
 | `prayerRequests` (raw text) | Yes | Yes | Yes | **No** | Yes | No | Done (`DEC-15`) |
 | Brief section 9 | — | — | Count | Count | Count | No | Done (`DEC-16`). The brief is one immutable document, so every reader gets the same count |
-| `summaryNotes` | Yes | Yes | Yes | Yes | Yes | No | **Open, Q-6** |
-| `notHeldReason` | Yes | Yes | Yes | Yes | Yes | No | **Open, Q-5** (recommended: restricted) |
-| Brief section 8 (follow-up titles) | — | — | Titles | Titles | Titles | No | **Open, Q-7** (recommended: count only) |
-| Team field points | No | No (until linked) | No (until linked) | No | Yes | No | Done (`DEC-17`, fail closed) |
+| `summaryNotes` | Yes | Yes | Yes | **No** | Yes | No | Done (`DEC-18`, Q-6) |
+| `notHeldReason` | Yes | Yes | Yes | **No** | Yes | No | Done (`DEC-18`, Q-5) |
+| Brief section 8 (follow-up titles) | — | — | Count (own Body) | Count | Count | No | Done (`DEC-18`, Q-7) |
+| Meeting Brief scope | — | — | Own Body slice | Organization numbers | Whole record | No | Done (`DEC-19`, Q-9) |
+| Team field points | No | Assigned point only | Own Body points only | No | Yes | No | Code done (`DEC-17`, Q-8). Closed until an admin maps every point. Migration 0004 not run |
 | Report counts, attendance numbers, late, blocked | Yes | Yes | Yes | Yes | Yes | No | Unchanged |
 
 ### 2.5 Consistency check: `notHeldReason`, F-1 and `DEC-06`
@@ -120,3 +121,16 @@ Because no brief exists, the format change (`DEC-16`) needs no clean-up. The nex
 | R-1 | CSP is Report-Only except anti-framing. Move directives to enforced only after a real LIFF device test shows no console violation | Medium |
 | R-2 | `insights` POST and `reports` POST have no per-user rate limit (other mutation routes do) | Low |
 | R-3 | The account-level Neon API key id 3540068 remains valid until the owner revokes it | High until revoked |
+
+
+### 2.8 Owner decisions Q-5 to Q-9 (2026-11-15): implementation
+
+| ID | Status | Evidence |
+|---|---|---|
+| Q-5 | Done | `redactRestrictedReportText` nulls `notHeldReason`. Test `gate16` |
+| Q-6 | Done | Same function nulls `summaryNotes`. Test `gate16` |
+| Q-7 | Done | Brief stores `section8OpenFollowUpsCount` and a count line. Test checks that no follow-up title is in the stored record or in any view |
+| Q-8 | Code and migration `0004` ready. **Not run on Neon** | `drizzle/0004_team_field_points_scope.sql` (4 nullable columns, 2 indexes, 3 foreign keys, no data change). `assignTeamFieldPoint`, `assign_point` action, mapping gate. Test `gate16` |
+| Q-9 | Done | `src/server/modules/insights/brief-view.ts`. Only `insights/service.ts` reads `meeting_briefs`. The generate action also returns the built view. Structure test in `gate16` |
+
+Known limits: the demo seed brief is a version 1 record, so a Body Leader sees no numbers for it. There is no screen yet for the assignment workflow; it is an API action. Blocked-group notes in a brief hold a system reason code, not user text.

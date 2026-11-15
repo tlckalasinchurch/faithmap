@@ -58,7 +58,10 @@ Core principles:
 | View restricted PII (phone, address, absence note `DEC-06`) | **Own group** | **Assigned groups** | **Own Body** | **No (Masked)** | **Yes** |
 | View restricted report text (`care_needs_notes`, `prayer_requests`, `DEC-15`) | **Own group** | **Assigned groups** | **Own Body** | **No** | **Yes** |
 | Meeting Brief prayer data (`DEC-16`) | — | — | Count only | Count only | Count only |
-| View Team Field Points: names and phones (`DEC-17`) | No (until linked) | Only the point assigned to them (when linked) | Same Body only (when linked) | **No** | **Yes** |
+| View Team Field Points (`DEC-17`) | No | Only the point assigned to them | Only points of their Body (phone masked) | **No** | **Yes** (all, mapping) |
+| Assign Body and coordinator to a Team Field Point (`DEC-17`) | No | No | No | No | **Yes** (audited) |
+| Read `notHeldReason`, `summaryNotes` (`DEC-18`) | Yes | Yes | Yes (own Body) | **No** | Yes |
+| Meeting Brief (`DEC-19`) | No | No | Own Body only | Organization numbers, no group names | Whole record |
 | View/Edit `draft` report | **Yes** | **No** (`not_submitted`) | **No** (`not_submitted`) | **No** (`not_submitted`) | **No** |
 | Submit / Resubmit report | **Yes** | No (unless also leader) | No | No | No |
 | Review / Request Revision | No | **Yes** (assigned groups) | **Yes** (fallback `CD-03` or after Supervisor `DEC-04`) | No | No |

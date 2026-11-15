@@ -266,13 +266,22 @@ function maskDraftReportForViewer(
  * Only direct stewards, the Body Leader of the group's Body and admins read them. A pastor sees the
  * rest of the report. The generic type keeps every other field of the row unchanged.
  */
-function redactRestrictedReportText<T extends { careNeedsNotes: string | null; prayerRequests: string | null }>(
+function redactRestrictedReportText<
+  T extends {
+    careNeedsNotes: string | null;
+    prayerRequests: string | null;
+    notHeldReason: string | null;
+    summaryNotes: string | null;
+  },
+>(
   report: T,
   actor: ActorContext,
   grp: { id: string; bodyId: string | null } | undefined
 ): T {
   if (grp && canViewUnmaskedGroupPii(actor, grp.id, grp.bodyId)) return report;
-  return { ...report, careNeedsNotes: null, prayerRequests: null };
+  // DEC-06 (Q-5, Q-6): the reason for a missed meeting and the group summary are free text. They can name a sick
+  // person or a family. A pastor reads the status and the numbers, not the text.
+  return { ...report, careNeedsNotes: null, prayerRequests: null, notHeldReason: null, summaryNotes: null };
 }
 
 export async function listReportsForPeriod(

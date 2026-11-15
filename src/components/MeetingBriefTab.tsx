@@ -177,6 +177,18 @@ export function MeetingBriefTab({
             </span>
           </div>
 
+          <p className="border-b-2 border-[#141413] bg-white px-6 py-3 text-base font-bold text-[#27272A]">
+            {brief.viewScope === 'body'
+              ? `ข้อมูลเฉพาะบอดี้ของคุณ${brief.viewBodyNames && brief.viewBodyNames.length > 0 ? `: ${brief.viewBodyNames.join(', ')}` : ''}`
+              : brief.viewScope === 'organization_aggregate'
+                ? 'ข้อมูลภาพรวมทั้งองค์กร แสดงเป็นตัวเลข ไม่แสดงชื่อกลุ่มหรือข้อความจากรายงาน'
+                : 'ข้อมูลทั้งองค์กร'}
+          </p>
+          {brief.viewScope === 'body' && Object.keys(s).length <= 1 ? (
+            <p className="p-6 text-base font-bold text-[#27272A]">
+              สรุปฉบับนี้สร้างก่อนระบบแยกข้อมูลตามบอดี้ จึงยังไม่แสดงตัวเลขของบอดี้คุณ กรุณาติดต่อผู้ดูแลระบบ
+            </p>
+          ) : (
           <div className="grid divide-y-2 divide-[#141413] md:grid-cols-2 md:divide-y-0">
             <div className="border-b-2 border-[#141413] bg-white p-5 md:border-r-2">
               <h3 className="font-display text-lg font-extrabold text-[#141413]">
@@ -287,6 +299,7 @@ export function MeetingBriefTab({
               </ul>
             </div>
           </div>
+          )}
         </section>
       )}
     </div>

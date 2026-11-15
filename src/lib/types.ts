@@ -211,6 +211,9 @@ export interface BriefView {
   isImmutable: boolean;
   sectionsJson: Record<string, unknown>;
   metricsJson: CanonicalMetrics;
+  /** Q-9: what the API built for this caller. */
+  viewScope?: 'organization_detail' | 'organization_aggregate' | 'body';
+  viewBodyNames?: string[];
 }
 
 export interface NotificationView {

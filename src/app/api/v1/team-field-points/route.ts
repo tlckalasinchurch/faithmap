@@ -3,16 +3,25 @@ import { readJsonBody, safeValidationIssues } from '@/server/http/body';
 import { z } from 'zod';
 import { handleRouteError, requireAuth } from '@/server/http/session';
 import { AppError } from '@/server/modules/errors';
+import { isAdmin } from '@/server/modules/authz/policy';
 import {
+  assignTeamFieldPoint,
+  getFieldPointMappingStatus,
   listTeamFieldPoints,
   syncTeamGFieldPoints,
 } from '@/server/modules/team-field-points/service';
 
 export const dynamic = 'force-dynamic';
 
-const teamPointActionSchema = z.object({
-  action: z.literal('sync_team_g'),
-});
+const teamPointActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('sync_team_g') }),
+  z.object({
+    action: z.literal('assign_point'),
+    pointId: z.string().uuid(),
+    bodyId: z.string().uuid().nullable(),
+    coordinatorUserId: z.string().uuid().nullable(),
+  }),
+]);
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +30,9 @@ export async function GET(req: NextRequest) {
     const teamCode = searchParams.get('teamCode');
     const q = searchParams.get('q');
     const points = await listTeamFieldPoints(db, actor, { teamCode, q });
-    return NextResponse.json({ ok: true, points });
+    // The mapping progress shows counts only. Admins see it to finish the data mapping.
+    const mapping = isAdmin(actor) ? await getFieldPointMappingStatus(db) : undefined;
+    return NextResponse.json({ ok: true, points, ...(mapping ? { mapping } : {}) });
   } catch (err) {
     return handleRouteError(err);
   }
@@ -38,6 +49,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (parsed.data.action === 'assign_point') {
+      const assigned = await assignTeamFieldPoint(db, actor, parsed.data);
+      return NextResponse.json({ ok: true, assigned });
+    }
     const result = await syncTeamGFieldPoints(db, actor);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

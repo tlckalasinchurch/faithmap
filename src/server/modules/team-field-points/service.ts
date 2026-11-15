@@ -1,6 +1,6 @@
 import { and, asc, eq, ilike, or } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
-import { teamFieldPoints } from '@/server/db/schema';
+import { bodies, teamFieldPoints, users } from '@/server/db/schema';
 import { KALASIN_TEAM_G_POINTS } from '@/lib/kalasin-field-points';
 import { recordSecurityAudit } from '../audit/service';
 import { isAdmin } from '../authz/policy';
@@ -25,6 +25,27 @@ export interface TeamFieldPointView {
   longitude: number;
   mapsUrl: string | null;
   sourceSheet: string;
+  /** Mapping fields. Only admins read the ids. Other roles get null. */
+  bodyId: string | null;
+  coordinatorUserId: string | null;
+}
+
+/**
+ * DEC-17 (owner decision Q-3 and Q-8). Who reads a field point:
+ * - Admin: every point, the raw phone, and the mapping.
+ * - Body Leader: only points whose `body_id` is a Body that the person leads. The phone is masked.
+ * - Assigned coordinator: only points whose `coordinator_user_id` is the person. The phone is not masked.
+ * - Everyone else, a pastor too: nothing.
+ *
+ * A point with `body_id` NULL or `coordinator_user_id` NULL matches nobody. Old rows start with both NULL,
+ * so after migration 0004 only admins read them until an admin maps them.
+ * The data mapping gate: no non-admin reads any point while one point still has `body_id` NULL.
+ * The system never guesses a link from a name or a phone number.
+ */
+export async function getFieldPointMappingStatus(db: FaithMapDb) {
+  const rows = await db.select({ id: teamFieldPoints.id, bodyId: teamFieldPoints.bodyId }).from(teamFieldPoints);
+  const unmapped = rows.filter((r) => !r.bodyId).length;
+  return { total: rows.length, unmapped, complete: rows.length > 0 && unmapped === 0 };
 }
 
 export async function listTeamFieldPoints(
@@ -32,12 +53,16 @@ export async function listTeamFieldPoints(
   actor: ActorContext,
   filters: { teamCode?: string | null; q?: string | null } = {}
 ): Promise<TeamFieldPointView[]> {
-  // DEC-06 (owner decision Q-3): coordinator names and phones are for admins, for people of the same Body and for the
-  // coordinator who is assigned to the point. A point has no Body and no coordinator account in the data yet, so no
-  // non-admin can be proven to qualify. Fail closed: admins only, even for a masked phone.
-  // To open it later, add a body link and a coordinator account link to `team_field_points`, then check them here.
-  if (!isAdmin(actor)) {
-    throw new AppError(403, 'SCOPE_FORBIDDEN', 'ข้อมูลจุดลงพื้นที่ดูได้เฉพาะผู้ดูแลระบบ จนกว่าจะกำหนดบอดี้และผู้ประสานงานของแต่ละจุด');
+  const admin = isAdmin(actor);
+  if (!admin) {
+    const status = await getFieldPointMappingStatus(db);
+    if (!status.complete) {
+      throw new AppError(
+        403,
+        'SCOPE_FORBIDDEN',
+        'ข้อมูลจุดลงพื้นที่ดูได้เฉพาะผู้ดูแลระบบ จนกว่าจะกำหนดบอดี้ของทุกจุดเสร็จ'
+      );
+    }
   }
   const conditions = [];
   if (filters.teamCode?.trim()) {
@@ -51,25 +76,90 @@ export async function listTeamFieldPoints(
     );
   }
 
-  const rows = await db
+  const all = await db
     .select()
     .from(teamFieldPoints)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(teamFieldPoints.teamCode), asc(teamFieldPoints.pointNo));
 
-  const includeRawPhone = isAdmin(actor);
+  const isOwnBody = (bodyId: string | null) => Boolean(bodyId && actor.bodyLeaderBodyIds.has(bodyId));
+  const isAssigned = (userId: string | null) => Boolean(userId && userId === actor.user.id);
+  const rows = admin ? all : all.filter((r) => isOwnBody(r.bodyId) || isAssigned(r.coordinatorUserId));
+
+  if (!admin && rows.length === 0 && actor.bodyLeaderBodyIds.size === 0) {
+    throw new AppError(403, 'SCOPE_FORBIDDEN', 'คุณไม่มีสิทธิ์ดูข้อมูลจุดลงพื้นที่');
+  }
+
   return rows.map((r) => ({
     id: r.id,
     teamCode: r.teamCode,
     pointNo: r.pointNo,
     pointName: r.pointName,
     coordinatorName: r.coordinatorName ?? null,
-    phone: includeRawPhone ? r.phoneRaw ?? null : maskPhone(r.phoneRaw ?? null),
+    phone: admin || isAssigned(r.coordinatorUserId) ? r.phoneRaw ?? null : maskPhone(r.phoneRaw ?? null),
     latitude: r.latitude,
     longitude: r.longitude,
     mapsUrl: r.mapsUrl ?? null,
     sourceSheet: r.sourceSheet,
+    bodyId: admin ? r.bodyId ?? null : null,
+    coordinatorUserId: admin ? r.coordinatorUserId ?? null : null,
   }));
+}
+
+/**
+ * Admin Assignment Workflow (Q-8). An admin links one point to one Body and, if known, to one coordinator account.
+ * Pass `null` to clear a link. The function checks that the Body is active and the user is active.
+ * It writes a security audit record with ids only (no names, no phone numbers).
+ */
+export async function assignTeamFieldPoint(
+  db: FaithMapDb,
+  actor: ActorContext,
+  input: { pointId: string; bodyId: string | null; coordinatorUserId: string | null }
+): Promise<{ pointId: string; bodyId: string | null; coordinatorUserId: string | null }> {
+  if (!isAdmin(actor)) {
+    throw new AppError(403, 'ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่กำหนดบอดี้และผู้ประสานงานของจุดลงพื้นที่ได้');
+  }
+  const [point] = await db.select().from(teamFieldPoints).where(eq(teamFieldPoints.id, input.pointId));
+  if (!point) throw new AppError(404, 'POINT_NOT_FOUND', 'ไม่พบจุดลงพื้นที่');
+
+  if (input.bodyId) {
+    const [body] = await db.select().from(bodies).where(eq(bodies.id, input.bodyId));
+    if (!body || body.status !== 'active') {
+      throw new AppError(400, 'BODY_INVALID', 'ไม่พบบอดี้ที่ใช้งานอยู่');
+    }
+  }
+  if (input.coordinatorUserId) {
+    const [user] = await db.select().from(users).where(eq(users.id, input.coordinatorUserId));
+    if (!user || user.status !== 'active') {
+      throw new AppError(400, 'COORDINATOR_INVALID', 'ไม่พบบัญชีผู้ประสานงานที่ใช้งานอยู่');
+    }
+  }
+
+  const now = new Date();
+  await db
+    .update(teamFieldPoints)
+    .set({
+      bodyId: input.bodyId,
+      coordinatorUserId: input.coordinatorUserId,
+      assignedByUserId: actor.user.id,
+      assignedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(teamFieldPoints.id, input.pointId));
+
+  await recordSecurityAudit(db, {
+    actorUserId: actor.user.id,
+    action: 'TEAM_FIELD_POINT_ASSIGNED',
+    targetType: 'team_field_point',
+    targetId: input.pointId,
+    metadata: {
+      previousBodyId: point.bodyId ?? null,
+      bodyId: input.bodyId,
+      previousCoordinatorUserId: point.coordinatorUserId ?? null,
+      coordinatorUserId: input.coordinatorUserId,
+    },
+  });
+  return { pointId: input.pointId, bodyId: input.bodyId, coordinatorUserId: input.coordinatorUserId };
 }
 
 export async function syncTeamGFieldPoints(
