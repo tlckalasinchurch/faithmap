@@ -72,30 +72,6 @@ export function Home({
   );
 }
 
-export function Reports({ data }: { data: WorkspacePayload }) {
-  const period = data.overview.selectedPeriod;
-  return (
-    <section className="space-y-4">
-      <ScreenTitle>รายงานประจำสัปดาห์</ScreenTitle>
-      <p className="text-lg text-[#27272A]">สัปดาห์: {period.periodKey}</p>
-      {data.reports.length === 0 && <Notice tone="info">ยังไม่มีรายงานในสัปดาห์นี้</Notice>}
-      <ul className="space-y-3">
-        {data.reports.map((r) => (
-          <li key={r.id} className="space-y-2 border-2 border-[#141413] bg-white p-4">
-            <p className="text-xl font-bold">{r.groupName}</p>
-            <p className="text-lg text-[#27272A]">{r.district}</p>
-            <StatusBadge status={r.status} isBlocked={r.isBlocked} isLate={r.isLate} />
-            {r.status === 'needs_revision' && r.revisionReason && (
-              <p className="text-lg">เหตุผลที่ส่งกลับ: {r.revisionReason}</p>
-            )}
-          </li>
-        ))}
-      </ul>
-      <Notice tone="info">แบบฟอร์มส่งรายงานในแอปนี้ยังไม่เปิดใช้งาน กรุณาส่งรายงานผ่านเว็บ FaithMap ก่อน</Notice>
-    </section>
-  );
-}
-
 export function Groups({ data }: { data: WorkspacePayload }) {
   return (
     <section className="space-y-4">

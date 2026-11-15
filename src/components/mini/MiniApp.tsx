@@ -6,7 +6,8 @@ import type { WorkspacePayload } from '@/lib/types';
 import type { MiniNavKey } from '@/lib/mini-nav';
 import { createLiffAdapter, type LiffAdapter } from '@/lib/liff/adapter';
 import { MiniAuth } from './MiniAuth';
-import { Approvals, Groups, Growth, Home, LinkLine, Notifications, Reports } from './MiniScreens';
+import { Approvals, Groups, Growth, Home, LinkLine, Notifications } from './MiniScreens';
+import { MiniReports } from './MiniReport';
 import { BigButton, Loading, Notice } from './ui';
 
 type View = MiniNavKey | 'link';
@@ -79,7 +80,7 @@ export function MiniApp() {
               </BigButton>
             )}
             {view === 'home' && <Home data={data} adapter={adapter} go={setView} />}
-            {view === 'reports' && <Reports data={data} />}
+            {view === 'reports' && <MiniReports data={data} reload={loadWorkspace} />}
             {view === 'group' && <Groups data={data} />}
             {view === 'growth' && <Growth />}
             {view === 'notifications' && <Notifications data={data} reload={loadWorkspace} />}
