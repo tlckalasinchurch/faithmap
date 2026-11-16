@@ -94,30 +94,10 @@ export function FaithMapApp() {
   }, [inboxOpen, moreMenuOpen]);
 
   const loadApp = useCallback(
-    async (overridePeriodId?: string, skipAutoDemo?: boolean) => {
+    async (overridePeriodId?: string) => {
       setErrorMsg(null);
       try {
-        let authRes = await apiRequest<AuthState>('/api/v1/auth');
-
-        if (
-          !authRes.authenticated &&
-          authRes.demoEnabled &&
-          authRes.demoAccounts.length > 0 &&
-          !skipAutoDemo &&
-          !manualLoginScreen
-        ) {
-          const preferred =
-            authRes.demoAccounts.find((a) => a.username === 'admin_kanok') ??
-            authRes.demoAccounts[0];
-          if (preferred) {
-            await apiRequest('/api/v1/auth', {
-              method: 'POST',
-              body: { action: 'demo_switch', userId: preferred.id },
-            });
-            authRes = await apiRequest<AuthState>('/api/v1/auth');
-          }
-        }
-
+        const authRes = await apiRequest<AuthState>('/api/v1/auth');
         setAuth(authRes);
 
         if (!authRes.authenticated) {
@@ -138,39 +118,12 @@ export function FaithMapApp() {
         setLoading(false);
       }
     },
-    [selectedPeriodId, manualLoginScreen]
+    [selectedPeriodId]
   );
 
   useEffect(() => {
     void loadApp();
   }, [loadApp]);
-
-  async function handleDemoSwitch(userId: string) {
-    if (!userId) return;
-    setLoading(true);
-    setManualLoginScreen(false);
-    setActiveTab('dashboard');
-    setReportTargetGroupId(null);
-    setMoreMenuOpen(false);
-    setInboxOpen(false);
-    setErrorMsg(null);
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem('fm_manual_login');
-      const url = new URL(window.location.href);
-      url.searchParams.set('tab', 'dashboard');
-      window.history.replaceState({ tab: 'dashboard' }, '', url.toString());
-    }
-    try {
-      await apiRequest('/api/v1/auth', {
-        method: 'POST',
-        body: { action: 'demo_switch', userId },
-      });
-      await loadApp(undefined, true);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'สลับบัญชีไม่สำเร็จ');
-      setLoading(false);
-    }
-  }
 
   async function handleLogout() {
     setManualLoginScreen(true);
@@ -182,7 +135,7 @@ export function FaithMapApp() {
       body: { action: 'logout' },
     });
     setWorkspace(null);
-    await loadApp(undefined, true);
+    await loadApp();
   }
 
   async function handleMarkAllRead() {
@@ -221,7 +174,7 @@ export function FaithMapApp() {
               type="button"
               onClick={() => {
                 setLoading(true);
-                void loadApp(undefined, true);
+                void loadApp();
               }}
               className="fm-btn fm-btn-lime min-h-[52px] w-full text-base font-bold"
             >
@@ -250,7 +203,7 @@ export function FaithMapApp() {
         onAuthenticated={async () => {
           setManualLoginScreen(false);
           setLoading(true);
-          await loadApp(undefined, true);
+          await loadApp();
         }}
       />
     );
@@ -319,20 +272,9 @@ export function FaithMapApp() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {auth.demoEnabled && (
-              <select
-                aria-label="สลับบทบาทผู้ใช้งานทดสอบ"
-                value={workspace.actor.user.id}
-                onChange={(e) => handleDemoSwitch(e.target.value)}
-                className="min-h-[48px] max-w-[260px] rounded-xl border-2 border-[#C8FF00] bg-[#27272A] px-3 text-base font-bold text-[#F0F4F8]"
-              >
-                {auth.demoAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id} className="bg-[#141413] text-[#F0F4F8]">
-                    {acc.displayName}
-                  </option>
-                ))}
-              </select>
-            )}
+            <span className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-[#C8FF00] bg-[#27272A] px-3.5 text-base font-bold text-[#F0F4F8]">
+              {workspace.actor.user.displayName}
+            </span>
 
             <button
               type="button"
@@ -386,14 +328,6 @@ export function FaithMapApp() {
                 );
               })}
             </nav>
-
-            {!auth.demoEnabled && (
-              <div className="hidden items-center gap-2 xl:flex">
-                <span className="rounded-lg border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1.5 text-base font-bold text-[#F0F4F8]">
-                  {workspace.actor.user.displayName}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </header>

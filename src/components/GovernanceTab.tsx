@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRightLeft,
   Building2,
@@ -11,6 +11,7 @@ import {
 import { apiRequest } from '@/lib/api-client';
 import type { AssignmentRole, WorkspacePayload } from '@/lib/types';
 import { BodyManagementPanel } from './BodyManagementPanel';
+import { LineGovernancePanel } from './LineGovernancePanel';
 
 export function GovernanceTab({
   workspace,
@@ -47,6 +48,27 @@ export function GovernanceTab({
   const [busy, setBusy] = useState(false);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
+  // Sync select defaults when the first body, group, or user is added to a clean database
+  useEffect(() => {
+    const firstBodyId = workspace.bodies[0]?.id ?? '';
+    if (!assignBodyId && firstBodyId) setAssignBodyId(firstBodyId);
+    if (!newGroupBodyId && firstBodyId) setNewGroupBodyId(firstBodyId);
+    if (!transferBodyId && firstBodyId) {
+      setTransferBodyId(workspace.bodies[1]?.id ?? firstBodyId);
+    }
+  }, [workspace.bodies, assignBodyId, newGroupBodyId, transferBodyId]);
+
+  useEffect(() => {
+    const firstGroupId = workspace.groups[0]?.id ?? '';
+    if (!assignGroupId && firstGroupId) setAssignGroupId(firstGroupId);
+    if (!transferGroupId && firstGroupId) setTransferGroupId(firstGroupId);
+  }, [workspace.groups, assignGroupId, transferGroupId]);
+
+  useEffect(() => {
+    const firstUserId = workspace.governanceUsers.find((u) => u.isUsable)?.id ?? '';
+    if (!assignUserId && firstUserId) setAssignUserId(firstUserId);
+  }, [workspace.governanceUsers, assignUserId]);
+
   async function runOrgAction(body: Record<string, unknown>, okText: string) {
     setBusy(true);
     setMsg(null);
@@ -72,7 +94,7 @@ export function GovernanceTab({
             จัดการองค์กร (บอดี้ → กลุ่มบ้าน) และสิทธิ์ผู้ดูแล
           </h1>
           <p className="mt-1 text-base font-medium text-[#E2E8F0]">
-            มอบหมายบทบาทผู้รับผิดชอบ ย้ายสังกัดบอดี้โดยคงประวัติรายงานเดิม และตรวจสอบบันทึกความปลอดภัย
+            อนุมัติคำขอลงทะเบียน LINE มอบหมายบทบาทผู้รับผิดชอบ ย้ายสังกัดบอดี้ และตรวจสอบบันทึกความปลอดภัย
           </p>
         </div>
         <Building2 className="h-8 w-8 shrink-0 text-[#C8FF00]" aria-hidden="true" />
@@ -91,82 +113,91 @@ export function GovernanceTab({
         </div>
       )}
 
+      {/* W1 + W2: LINE Registration Approvals & Self LINE Account Linking */}
+      <LineGovernancePanel
+        workspace={workspace}
+        onRefresh={onRefresh}
+        onSelectUserForAssignment={(uid) => setAssignUserId(uid)}
+      />
+
       <BodyManagementPanel workspace={workspace} onRefresh={onRefresh} />
 
       {/* Bodies Health Ledger */}
-      <section className="fm-panel grid divide-y-2 divide-[#141413] overflow-hidden md:grid-cols-2 md:divide-x-2 md:divide-y-0">
-        {workspace.bodies.map((b) => (
-          <div key={b.id} className="min-w-0 bg-white p-6">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h2 className="font-display text-2xl font-extrabold text-[#141413]">
-                  {b.nameTh}
-                </h2>
-                <span className="mt-1 inline-block rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-base font-bold text-[#141413]">
-                  {b.code}
+      {workspace.bodies.length > 0 && (
+        <section className="fm-panel grid divide-y-2 divide-[#141413] overflow-hidden md:grid-cols-2 md:divide-x-2 md:divide-y-0">
+          {workspace.bodies.map((b) => (
+            <div key={b.id} className="min-w-0 bg-white p-6">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+                    {b.nameTh}
+                  </h2>
+                  <span className="mt-1 inline-block rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono text-base font-bold text-[#141413]">
+                    {b.code}
+                  </span>
+                </div>
+                <span
+                  className={`fm-sticker ${
+                    b.hasEligibleBodyLeader
+                      ? 'bg-[#C8FF00] text-[#141413]'
+                      : 'bg-[#FFE4E6] text-[#881337]'
+                  }`}
+                >
+                  {b.hasEligibleBodyLeader
+                    ? 'พร้อมอนุมัติ (มีหัวหน้าบอดี้)'
+                    : 'ขาดหัวหน้าบอดี้ (รายงานจะส่งต่อไม่ได้)'}
                 </span>
               </div>
-              <span
-                className={`fm-sticker ${
-                  b.hasEligibleBodyLeader
-                    ? 'bg-[#C8FF00] text-[#141413]'
-                    : 'bg-[#FFE4E6] text-[#881337]'
-                }`}
-              >
-                {b.hasEligibleBodyLeader
-                  ? 'พร้อมอนุมัติ (มีหัวหน้าบอดี้)'
-                  : 'ขาดหัวหน้าบอดี้ (รายงานจะส่งต่อไม่ได้)'}
-              </span>
-            </div>
 
-            <div className="mt-4 divide-y-2 divide-[#141413] rounded-xl border-2 border-[#141413] bg-[#F0F4F8]">
-              {b.bodyLeaders.map((l) => (
-                <div
-                  key={l.assignmentId}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-base font-bold text-[#141413]"
-                >
-                  <span>
-                    {l.displayName} ({l.accountStatus})
-                  </span>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        const key = `revoke:${l.assignmentId}`;
-                        if (confirmKey !== key) {
-                          setConfirmKey(key);
-                          return;
-                        }
-                        setConfirmKey(null);
-                        void runOrgAction(
-                          {
-                            action: 'revoke_assignment',
-                            assignmentId: l.assignmentId,
-                            reason: 'ปรับปรุงการมอบหมายระดับบอดี้',
-                          },
-                          'ถอดถอนตำแหน่งระดับบอดี้เรียบร้อย'
-                        );
-                      }}
-                      className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-base ${
-                        confirmKey === `revoke:${l.assignmentId}`
-                          ? 'bg-[var(--fm-coral)] text-[var(--fm-paper)]'
-                          : 'bg-[#FFE4E6] text-[#881337]'
-                      }`}
-                    >
-                      {confirmKey === `revoke:${l.assignmentId}` ? 'กดซ้ำเพื่อยืนยันถอดถอน' : 'ถอดถอน'}
-                    </button>
-                  )}
-                </div>
-              ))}
+              <div className="mt-4 divide-y-2 divide-[#141413] rounded-xl border-2 border-[#141413] bg-[#F0F4F8]">
+                {b.bodyLeaders.map((l) => (
+                  <div
+                    key={l.assignmentId}
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-base font-bold text-[#141413]"
+                  >
+                    <span>
+                      {l.displayName} ({l.accountStatus})
+                    </span>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          const key = `revoke:${l.assignmentId}`;
+                          if (confirmKey !== key) {
+                            setConfirmKey(key);
+                            return;
+                          }
+                          setConfirmKey(null);
+                          void runOrgAction(
+                            {
+                              action: 'revoke_assignment',
+                              assignmentId: l.assignmentId,
+                              reason: 'ปรับปรุงการมอบหมายระดับบอดี้',
+                            },
+                            'ถอดถอนตำแหน่งระดับบอดี้เรียบร้อย'
+                          );
+                        }}
+                        className={`fm-btn min-h-[48px] px-3.5 py-1.5 text-base ${
+                          confirmKey === `revoke:${l.assignmentId}`
+                            ? 'bg-[var(--fm-coral)] text-[var(--fm-paper)]'
+                            : 'bg-[#FFE4E6] text-[#881337]'
+                        }`}
+                      >
+                        {confirmKey === `revoke:${l.assignmentId}` ? 'กดซ้ำเพื่อยืนยันถอดถอน' : 'ถอดถอน'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
 
       {/* Assign Leadership Role (DEC-09 Enforced) */}
       {canManageAnyGroup && (
-        <section className="fm-panel overflow-hidden">
+        <section id="fm-assign-role-section" className="fm-panel overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#C8FF00] px-6 py-4">
             <h2 className="min-w-0 font-display text-2xl font-extrabold text-[#141413]">
               มอบหมายหน้าที่ผู้นำแบบยืดหยุ่น (Care / Coordinator / Group / Body Leader)
@@ -179,6 +210,16 @@ export function GovernanceTab({
               หัวหน้าบอดี้มอบหมายบทบาทได้เฉพาะกลุ่มในบอดี้ของตนเองเท่านั้น
               และระบบรับเฉพาะบัญชีที่เปิดใช้งานพร้อมล็อกอินแล้ว
             </p>
+            {assignScope === 'group' && workspace.groups.length === 0 && (
+              <p className="rounded-xl border-2 border-[#141413] bg-[#FEF3C7] p-3 text-base font-bold text-[#78350F]">
+                เริ่มต้นใช้งาน: ยังไม่มีกลุ่มพันธกิจบ้านในระบบ กรุณาสร้างบอดี้ด้านบนและตั้งกลุ่มพันธกิจบ้านด้านล่างก่อน จึงจะมอบหมายตำแหน่งระดับกลุ่มได้
+              </p>
+            )}
+            {assignScope === 'body' && workspace.bodies.length === 0 && (
+              <p className="rounded-xl border-2 border-[#141413] bg-[#FEF3C7] p-3 text-base font-bold text-[#78350F]">
+                เริ่มต้นใช้งาน: ยังไม่มีบอดี้ในระบบ กรุณาสร้างบอดี้อย่างน้อย 1 บอดี้ในหัวข้อ “บอดี้” ด้านบนก่อน
+              </p>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <select
@@ -256,7 +297,11 @@ export function GovernanceTab({
 
             <button
               type="button"
-              disabled={busy || !assignUserId}
+              disabled={
+                busy ||
+                !assignUserId ||
+                (assignScope === 'body' ? !assignBodyId : !assignGroupId)
+              }
               onClick={() =>
                 runOrgAction(
                   {
@@ -271,7 +316,7 @@ export function GovernanceTab({
                   'บันทึกการมอบหมายหน้าที่เรียบร้อยแล้ว'
                 )
               }
-              className="fm-btn fm-btn-violet text-base"
+              className="fm-btn fm-btn-violet text-base disabled:opacity-60"
             >
               <span>บันทึกการมอบหมาย</span>
             </button>
@@ -291,6 +336,11 @@ export function GovernanceTab({
             </div>
 
             <div className="space-y-4 p-6">
+              {workspace.bodies.length === 0 && (
+                <p className="rounded-xl border-2 border-[#141413] bg-[#FEF3C7] p-3 text-base font-bold text-[#78350F]">
+                  เริ่มต้นใช้งาน: กรุณาสร้างบอดี้อย่างน้อย 1 บอดี้ในหัวข้อ “บอดี้” ด้านบนก่อน จึงจะตั้งกลุ่มพันธกิจบ้านได้
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <input
                   type="text"
@@ -328,7 +378,7 @@ export function GovernanceTab({
               </div>
               <button
                 type="button"
-                disabled={busy || !newGroupCode || !newGroupName}
+                disabled={busy || !newGroupCode || !newGroupName || !newGroupBodyId}
                 onClick={() =>
                   runOrgAction(
                     {
@@ -344,7 +394,7 @@ export function GovernanceTab({
                     'สร้างกลุ่มพันธกิจบ้านใหม่เรียบร้อย'
                   )
                 }
-                className="fm-btn fm-btn-lime text-base"
+                className="fm-btn fm-btn-lime text-base disabled:opacity-60"
               >
                 <span>+ เพิ่มกลุ่มพันธกิจบ้าน</span>
               </button>
@@ -361,6 +411,11 @@ export function GovernanceTab({
               </div>
 
               <div className="space-y-4 p-6">
+                {workspace.groups.length === 0 && (
+                  <p className="rounded-xl border-2 border-[#141413] bg-[#F1F5F9] p-3 text-base font-medium text-[#475569]">
+                    จะใช้งานได้เมื่อมีกลุ่มพันธกิจบ้านและบอดี้ปลายทางแล้ว
+                  </p>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <select
                     aria-label="เลือกกลุ่มที่ต้องการย้าย"
@@ -396,7 +451,7 @@ export function GovernanceTab({
                 </div>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !transferGroupId || !transferBodyId}
                   onClick={() =>
                     runOrgAction(
                       {
@@ -408,7 +463,7 @@ export function GovernanceTab({
                       'ย้ายกลุ่มไปยังบอดี้ใหม่เรียบร้อย (Snapshot รอบเดิมคงอยู่)'
                     )
                   }
-                  className="fm-btn fm-btn-paper text-base"
+                  className="fm-btn fm-btn-paper text-base disabled:opacity-60"
                 >
                   <span>ยืนยันย้ายสังกัดบอดี้</span>
                 </button>
