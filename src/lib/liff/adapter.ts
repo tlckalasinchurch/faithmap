@@ -16,9 +16,10 @@ export interface LiffAdapter {
  * The mock import sits behind a NODE_ENV check, so a production build does not contain it.
  */
 export async function createLiffAdapter(): Promise<LiffAdapter | null> {
+  const liffId = process.env.NEXT_PUBLIC_LIFF_ID || '2012616582-tsDHY0DR';
   const kind = selectLiffAdapterKind({
     NODE_ENV: process.env.NODE_ENV,
-    NEXT_PUBLIC_LIFF_ID: process.env.NEXT_PUBLIC_LIFF_ID,
+    NEXT_PUBLIC_LIFF_ID: liffId,
     NEXT_PUBLIC_FAITHMAP_MOCK_LIFF: process.env.NEXT_PUBLIC_FAITHMAP_MOCK_LIFF,
   });
 
@@ -28,7 +29,7 @@ export async function createLiffAdapter(): Promise<LiffAdapter | null> {
   }
   if (kind === 'real') {
     const { RealLiffAdapter } = await import('./real-adapter');
-    return new RealLiffAdapter(process.env.NEXT_PUBLIC_LIFF_ID ?? '');
+    return new RealLiffAdapter(liffId);
   }
   return null;
 }
