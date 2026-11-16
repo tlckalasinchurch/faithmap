@@ -24,6 +24,7 @@ import type {
   WorkspacePayload,
 } from '@/lib/types';
 import { LoginView } from './LoginView';
+import { needsRoleAssignment } from '@/lib/liff/login-flow';
 import { DashboardTab } from './DashboardTab';
 import { WeeklyReportTab } from './WeeklyReportTab';
 import { ApprovalQueueTab } from './ApprovalQueueTab';
@@ -192,7 +193,7 @@ export function FaithMapApp() {
     await loadApp();
   }
 
-  if (loading && !auth) {
+  if (loading && (!auth || (auth.authenticated && !workspace))) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="fm-panel bg-[#C8FF00] px-6 py-4 text-lg font-extrabold text-[#141413]">
@@ -202,11 +203,50 @@ export function FaithMapApp() {
     );
   }
 
+  if (auth?.authenticated && !workspace) {
+    const waitingForRole = needsRoleAssignment(auth.actor);
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-8 text-[#141413]">
+        <section className="fm-panel w-full max-w-md space-y-4 bg-white p-6">
+          <h1 className="font-display text-2xl font-extrabold">
+            {waitingForRole ? 'รอผู้ดูแลกำหนดกลุ่มบ้านให้ท่าน' : 'เปิดข้อมูลไม่สำเร็จ'}
+          </h1>
+          <p className="text-base text-[#27272A]">
+            {waitingForRole
+              ? `สวัสดี ${auth.actor?.user.displayName ?? ''} บัญชีของท่านได้รับอนุมัติแล้ว แต่ผู้ดูแลระบบยังไม่ได้กำหนดกลุ่มบ้านหรือตำแหน่งให้ เมื่อกำหนดแล้วให้กด “ลองอีกครั้ง”`
+              : errorMsg ?? 'กรุณาลองอีกครั้ง หากยังไม่ได้ให้ติดต่อผู้ดูแลระบบ'}
+          </p>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                void loadApp(undefined, true);
+              }}
+              className="fm-btn fm-btn-lime min-h-[52px] w-full text-base font-bold"
+            >
+              ลองอีกครั้ง
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="fm-btn fm-btn-paper min-h-[48px] w-full text-base font-bold"
+            >
+              ออกจากระบบ
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (!auth || !auth.authenticated || !workspace) {
     return (
       <LoginView
-        demoEnabled={auth?.demoEnabled ?? true}
-        demoAccounts={auth?.demoAccounts ?? []}
+        autoSignIn={!manualLoginScreen}
+        onUserStartedSignIn={() => {
+          if (typeof window !== 'undefined') window.sessionStorage.removeItem('fm_manual_login');
+        }}
         onAuthenticated={async () => {
           setManualLoginScreen(false);
           setLoading(true);
