@@ -22,8 +22,8 @@ export function LoginView({
   demoAccounts: DemoAccountOption[];
   onAuthenticated: () => Promise<void>;
 }) {
-  const [username, setUsername] = useState('wichai_nonthan');
-  const [password, setPassword] = useState('FaithMap2026!');
+  const [username, setUsername] = useState(demoEnabled ? 'admin' : '');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -108,7 +108,7 @@ export function LoginView({
 
         <div className="grid gap-6 lg:grid-cols-12">
           {/* Login Studio Deck */}
-          <section className="fm-panel p-6 sm:p-7 lg:col-span-5">
+          <section className={`fm-panel p-6 sm:p-7 ${demoEnabled ? 'lg:col-span-5' : 'lg:col-span-8 lg:col-start-3'}`}>
             <div className="mb-5 flex items-center justify-between gap-3 border-b-2 border-[#141413] pb-4">
               <h2 className="font-display text-2xl font-extrabold text-[#141413]">
                 เข้าสู่ระบบผู้นำพันธกิจ
@@ -143,7 +143,7 @@ export function LoginView({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="fm-input w-full"
-                  placeholder="เช่น wichai_nonthan"
+                  placeholder="เช่น admin"
                   required
                 />
               </div>
@@ -163,12 +163,14 @@ export function LoginView({
                   className="fm-input w-full"
                   required
                 />
-                <p className="mt-2 text-base font-medium text-[#27272A]">
-                  รหัสผ่านเริ่มต้นสำหรับบัญชีนำร่อง:{' '}
-                  <code className="rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono font-bold text-[#141413]">
-                    FaithMap2026!
-                  </code>
-                </p>
+                {demoEnabled && (
+                  <p className="mt-2 text-base font-medium text-[#27272A]">
+                    รหัสผ่านเริ่มต้นสำหรับบัญชีนำร่อง:{' '}
+                    <code className="rounded-md border border-[#141413] bg-[#E2E8F0] px-2 py-0.5 font-mono font-bold text-[#141413]">
+                      FaithMap2026!
+                    </code>
+                  </p>
+                )}
               </div>
 
               <button
