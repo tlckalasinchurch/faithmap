@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
     const dataset = req.nextUrl.searchParams.get('export');
     const periodId = req.nextUrl.searchParams.get('periodId') || undefined;
 
-    if (dataset !== 'reports' && dataset !== 'visitors') {
-      throw new AppError(400, 'INVALID_EXPORT', 'รองรับเฉพาะ export=reports หรือ export=visitors');
+    if (dataset !== 'reports' && dataset !== 'visitors' && dataset !== 'attendance' && dataset !== 'brief') {
+      throw new AppError(400, 'INVALID_EXPORT', 'รองรับเฉพาะ export=reports, visitors, attendance หรือ brief');
     }
 
     const exported = await exportScopedCsvData(db, actor, dataset, periodId);

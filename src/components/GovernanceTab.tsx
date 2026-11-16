@@ -67,7 +67,7 @@ export function GovernanceTab({
   return (
     <div className="space-y-6">
       <section className="fm-panel-ink flex flex-wrap items-center justify-between gap-4 p-6">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-3xl font-extrabold text-[#F0F4F8]">
             จัดการองค์กร (บอดี้ → กลุ่มบ้าน) และสิทธิ์ผู้ดูแล
           </h1>
@@ -75,7 +75,7 @@ export function GovernanceTab({
             มอบหมายบทบาทผู้รับผิดชอบ ย้ายสังกัดบอดี้โดยคงประวัติรายงานเดิม และตรวจสอบบันทึกความปลอดภัย
           </p>
         </div>
-        <Building2 className="h-8 w-8 text-[#C8FF00]" aria-hidden="true" />
+        <Building2 className="h-8 w-8 shrink-0 text-[#C8FF00]" aria-hidden="true" />
       </section>
 
       {msg && (
@@ -96,7 +96,7 @@ export function GovernanceTab({
       {/* Bodies Health Ledger */}
       <section className="fm-panel grid divide-y-2 divide-[#141413] overflow-hidden md:grid-cols-2 md:divide-x-2 md:divide-y-0">
         {workspace.bodies.map((b) => (
-          <div key={b.id} className="bg-white p-6">
+          <div key={b.id} className="min-w-0 bg-white p-6">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="font-display text-2xl font-extrabold text-[#141413]">
@@ -123,7 +123,7 @@ export function GovernanceTab({
               {b.bodyLeaders.map((l) => (
                 <div
                   key={l.assignmentId}
-                  className="flex items-center justify-between px-4 py-2.5 text-base font-bold text-[#141413]"
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-base font-bold text-[#141413]"
                 >
                   <span>
                     {l.displayName} ({l.accountStatus})
@@ -168,10 +168,10 @@ export function GovernanceTab({
       {canManageAnyGroup && (
         <section className="fm-panel overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b-2 border-[#141413] bg-[#C8FF00] px-6 py-4">
-            <h2 className="font-display text-2xl font-extrabold text-[#141413]">
+            <h2 className="min-w-0 font-display text-2xl font-extrabold text-[#141413]">
               มอบหมายหน้าที่ผู้นำแบบยืดหยุ่น (Care / Coordinator / Group / Body Leader)
             </h2>
-            <UserCog className="h-6 w-6 text-[#141413]" aria-hidden="true" />
+            <UserCog className="h-6 w-6 shrink-0 text-[#141413]" aria-hidden="true" />
           </div>
 
           <div className="space-y-4 p-6">
@@ -189,7 +189,7 @@ export function GovernanceTab({
                   setAssignScope(v);
                   setAssignRole(v === 'body' ? 'body_leader' : 'care_leader');
                 }}
-                className="fm-input font-bold"
+                className="fm-input w-full min-w-0 font-bold"
               >
                 <option value="group">ระดับกลุ่มพันธกิจบ้าน</option>
                 {isAdmin && <option value="body">ระดับบอดี้ (Body Leader)</option>}
@@ -200,7 +200,7 @@ export function GovernanceTab({
                   aria-label="เลือกบอดี้"
                   value={assignBodyId}
                   onChange={(e) => setAssignBodyId(e.target.value)}
-                  className="fm-input font-bold"
+                  className="fm-input w-full min-w-0 font-bold"
                 >
                   {workspace.bodies.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -213,7 +213,7 @@ export function GovernanceTab({
                   aria-label="เลือกกลุ่มพันธกิจ"
                   value={assignGroupId}
                   onChange={(e) => setAssignGroupId(e.target.value)}
-                  className="fm-input font-bold"
+                  className="fm-input w-full min-w-0 font-bold"
                 >
                   {workspace.groups.map((g) => (
                     <option key={g.id} value={g.id}>
@@ -227,7 +227,7 @@ export function GovernanceTab({
                 aria-label="เลือกบทบาท"
                 value={assignRole}
                 onChange={(e) => setAssignRole(e.target.value as AssignmentRole)}
-                className="fm-input font-bold"
+                className="fm-input w-full min-w-0 font-bold"
               >
                 {assignScope === 'body' ? (
                   <option value="body_leader">หัวหน้าบอดี้ (body_leader)</option>
@@ -244,7 +244,7 @@ export function GovernanceTab({
                 aria-label="เลือกผู้ใช้งาน"
                 value={assignUserId}
                 onChange={(e) => setAssignUserId(e.target.value)}
-                className="fm-input font-bold"
+                className="fm-input w-full min-w-0 font-bold"
               >
                 {workspace.governanceUsers.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -282,12 +282,12 @@ export function GovernanceTab({
       {/* Create New Group & Transfer Group Body */}
       {canManageAnyGroup && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <section className="fm-panel overflow-hidden">
+          <section className="fm-panel min-w-0 overflow-hidden">
             <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
-              <h2 className="font-display text-xl font-extrabold text-[#141413]">
+              <h2 className="min-w-0 font-display text-xl font-extrabold text-[#141413]">
                 ตั้งกลุ่มพันธกิจบ้านใหม่
               </h2>
-              <UserPlus className="h-5 w-5 text-[#141413]" aria-hidden="true" />
+              <UserPlus className="h-5 w-5 shrink-0 text-[#141413]" aria-hidden="true" />
             </div>
 
             <div className="space-y-4 p-6">
@@ -297,19 +297,20 @@ export function GovernanceTab({
                   value={newGroupCode}
                   onChange={(e) => setNewGroupCode(e.target.value)}
                   placeholder="รหัสกลุ่ม เช่น GRP-KHAMPHAENG"
-                  className="fm-input"
+                  className="fm-input w-full min-w-0"
                 />
                 <input
                   type="text"
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   placeholder="ชื่อกลุ่มพันธกิจบ้าน"
-                  className="fm-input"
+                  className="fm-input w-full min-w-0"
                 />
                 <select
+                  aria-label="เลือกบอดี้ของกลุ่มใหม่"
                   value={newGroupBodyId}
                   onChange={(e) => setNewGroupBodyId(e.target.value)}
-                  className="fm-input font-bold"
+                  className="fm-input w-full min-w-0 font-bold"
                 >
                   {workspace.bodies.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -322,7 +323,7 @@ export function GovernanceTab({
                   value={newGroupDistrict}
                   onChange={(e) => setNewGroupDistrict(e.target.value)}
                   placeholder="อำเภอ"
-                  className="fm-input"
+                  className="fm-input w-full min-w-0"
                 />
               </div>
               <button
@@ -351,20 +352,21 @@ export function GovernanceTab({
           </section>
 
           {isAdmin && (
-            <section className="fm-panel overflow-hidden">
+            <section className="fm-panel min-w-0 overflow-hidden">
               <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#DBEAFE] px-6 py-4">
-                <h2 className="font-display text-xl font-extrabold text-[#141413]">
+                <h2 className="min-w-0 font-display text-xl font-extrabold text-[#141413]">
                   ย้ายกลุ่มข้ามบอดี้ (คงประวัติรายงานเดิมไว้ครบ)
                 </h2>
-                <ArrowRightLeft className="h-5 w-5 text-[#141413]" aria-hidden="true" />
+                <ArrowRightLeft className="h-5 w-5 shrink-0 text-[#141413]" aria-hidden="true" />
               </div>
 
               <div className="space-y-4 p-6">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <select
+                    aria-label="เลือกกลุ่มที่ต้องการย้าย"
                     value={transferGroupId}
                     onChange={(e) => setTransferGroupId(e.target.value)}
-                    className="fm-input font-bold"
+                    className="fm-input w-full min-w-0 font-bold"
                   >
                     {workspace.groups.map((g) => (
                       <option key={g.id} value={g.id}>
@@ -373,9 +375,10 @@ export function GovernanceTab({
                     ))}
                   </select>
                   <select
+                    aria-label="เลือกบอดี้ปลายทาง"
                     value={transferBodyId}
                     onChange={(e) => setTransferBodyId(e.target.value)}
-                    className="fm-input font-bold"
+                    className="fm-input w-full min-w-0 font-bold"
                   >
                     {workspace.bodies.map((b) => (
                       <option key={b.id} value={b.id}>
@@ -388,7 +391,7 @@ export function GovernanceTab({
                     value={transferReason}
                     onChange={(e) => setTransferReason(e.target.value)}
                     placeholder="เหตุผลในการย้ายบอดี้"
-                    className="fm-input sm:col-span-2"
+                    className="fm-input w-full min-w-0 sm:col-span-2"
                   />
                 </div>
                 <button
@@ -418,7 +421,7 @@ export function GovernanceTab({
       {/* Users Lifecycle + Security Audit Logs (Admin only) */}
       {isAdmin && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <section className="fm-panel overflow-hidden">
+          <section className="fm-panel min-w-0 overflow-hidden">
             <div className="border-b-2 border-[#141413] bg-[#E2E8F0] px-6 py-4">
               <h2 className="font-display text-xl font-extrabold text-[#141413]">
                 จัดการสถานะบัญชีผู้ใช้
@@ -429,9 +432,9 @@ export function GovernanceTab({
               {workspace.governanceUsers.map((u) => (
                 <div
                   key={u.id}
-                  className="flex items-center justify-between gap-3 bg-white px-6 py-3.5"
+                  className="flex flex-wrap items-center justify-between gap-3 bg-white px-6 py-3.5"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-base font-extrabold text-[#141413]">
                       {u.displayName}
                     </div>
@@ -480,12 +483,12 @@ export function GovernanceTab({
             </div>
           </section>
 
-          <section className="fm-panel overflow-hidden">
+          <section className="fm-panel min-w-0 overflow-hidden">
             <div className="flex items-center justify-between gap-2 border-b-2 border-[#141413] bg-[#141413] px-6 py-4 text-[#F0F4F8]">
               <h2 className="font-display text-xl font-extrabold text-[#F0F4F8]">
                 บันทึกเหตุการณ์ความปลอดภัย (Append-Only Audit Log)
               </h2>
-              <ShieldCheck className="h-5 w-5 text-[#C8FF00]" aria-hidden="true" />
+              <ShieldCheck className="h-5 w-5 shrink-0 text-[#C8FF00]" aria-hidden="true" />
             </div>
 
             <div className="max-h-[380px] divide-y-2 divide-[#141413] overflow-y-auto font-mono text-base">

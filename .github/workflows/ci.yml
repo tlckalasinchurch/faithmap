@@ -54,3 +54,5 @@ jobs:
         run: npm run build
       - name: Browser files hold no field point phone numbers or names (DEC-06, DEC-17)
         run: npm run check:bundle
+      - name: Prohibit coordinator personal data in repository (G-19, DEC-06)
+        run: npm run check:safeguards

@@ -1,10 +1,12 @@
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import type { FaithMapDb } from '@/server/db/client';
 import {
+  attendanceRecords,
   bodies,
   followUpItems,
   houseMissionGroups,
   meetingBriefs,
+  members,
   periodGroupSnapshots,
   reportingPeriods,
   visitors,
@@ -428,7 +430,7 @@ export function csvEscape(val: unknown): string {
 export async function exportScopedCsvData(
   db: FaithMapDb,
   actor: ActorContext,
-  dataset: 'reports' | 'visitors',
+  dataset: 'reports' | 'visitors' | 'attendance' | 'brief',
   periodId?: string
 ): Promise<{ filename: string; csv: string }> {
   const allGroups = await db.select().from(houseMissionGroups);
@@ -501,6 +503,127 @@ export async function exportScopedCsvData(
 
     return {
       filename: `faithmap-reports-${new Date().toISOString().slice(0, 10)}.csv`,
+      csv: `\uFEFF${[header, ...lines].join('\r\n')}`,
+    };
+  }
+
+  if (dataset === 'attendance') {
+    let targetPeriodId = periodId;
+    if (!targetPeriodId) {
+      const [p] = await db
+        .select()
+        .from(reportingPeriods)
+        .where(eq(reportingPeriods.status, 'open'))
+        .limit(1);
+      targetPeriodId = p?.id;
+    }
+    const reports = targetPeriodId
+      ? await db.select().from(weeklyReports).where(eq(weeklyReports.periodId, targetPeriodId))
+      : await db.select().from(weeklyReports);
+
+    const scopedReports = reports.filter(
+      (r) => r.status !== 'draft' && canAccessGroup(actor, r.groupId, r.bodyId)
+    );
+    const reportIds = scopedReports.map((r) => r.id);
+    const reportMap = new Map(scopedReports.map((r) => [r.id, r]));
+
+    const allMembers = await db.select().from(members);
+    const memberMap = new Map(allMembers.map((m) => [m.id, m]));
+
+    const records =
+      reportIds.length > 0
+        ? await db
+            .select()
+            .from(attendanceRecords)
+            .where(inArray(attendanceRecords.weeklyReportId, reportIds))
+        : [];
+
+    const header = [
+      'GroupCode',
+      'GroupName',
+      'MemberCode',
+      'MemberName',
+      'AttendanceStatus',
+      'Notes',
+      'RecordedAt',
+    ].join(',');
+
+    const lines = records.map((att) => {
+      const rep = reportMap.get(att.weeklyReportId);
+      const grp = rep ? groupMap.get(rep.groupId) : undefined;
+      const mem = memberMap.get(att.memberId);
+      const unmasked = canViewUnmaskedGroupPii(actor, grp?.id, grp?.bodyId);
+      return [
+        grp?.groupCode ?? '',
+        grp?.nameTh ?? '',
+        mem?.memberCode ?? '',
+        mem ? maskDisplayPiiName(mem.fullName, mem.displayName, unmasked) : '',
+        att.attendanceStatus,
+        unmasked ? att.notes ?? '' : '',
+        att.createdAt.toISOString(),
+      ]
+        .map(csvEscape)
+        .join(',');
+    });
+
+    await recordSecurityAudit(db, {
+      actorUserId: actor.user.id,
+      action: 'csv_export_attendance',
+      targetType: 'attendance_record',
+      targetId: targetPeriodId ?? null,
+      metadata: { rowCount: lines.length },
+    });
+
+    return {
+      filename: `faithmap-attendance-${new Date().toISOString().slice(0, 10)}.csv`,
+      csv: `\uFEFF${[header, ...lines].join('\r\n')}`,
+    };
+  }
+
+  if (dataset === 'brief') {
+    let targetBrief = periodId
+      ? (await db.select().from(meetingBriefs).where(eq(meetingBriefs.periodId, periodId)).limit(1))[0]
+      : (await db.select().from(meetingBriefs).orderBy(desc(meetingBriefs.generatedAt)).limit(1))[0];
+
+    if (!targetBrief) {
+      throw new AppError(404, 'BRIEF_NOT_FOUND', 'ไม่พบรายงานสรุปการประชุม (Meeting Brief) สำหรับรอบที่ระบุ');
+    }
+
+    const scope = resolveBriefScope(actor);
+    const view = buildMeetingBriefView(targetBrief, actor);
+    const m = (view.metricsJson ?? {}) as Record<string, unknown>;
+
+    const header = ['Section', 'Item', 'Value'].join(',');
+    const lines: string[] = [
+      ['Metadata', 'BriefId', view.id],
+      ['Metadata', 'GeneratedAt', view.generatedAt instanceof Date ? view.generatedAt.toISOString() : String(view.generatedAt)],
+      ['Metadata', 'Scope', view.viewScope],
+      ['Section1', 'ActiveBodies', m.activeBodies ?? ''],
+      ['Section2', 'ActiveGroups', m.activeGroups ?? ''],
+      ['Section3', 'ExpectedReports', m.expectedReports ?? ''],
+      ['Section4', 'SubmittedReports', m.submittedReports ?? ''],
+      ['Section4', 'ApprovedReports', m.approvedReports ?? ''],
+      ['Section4', 'MissingReports', m.missingReports ?? ''],
+      ['Section5', 'HeldMeetings', m.heldMeetings ?? ''],
+      ['Section5', 'ConfirmedNotHeld', m.confirmedNotHeld ?? ''],
+      ['Section6', 'LateReports', m.lateReports ?? ''],
+      ['Section7', 'BlockedReports', m.blockedReports ?? ''],
+      ['Section8', 'PeriodAttendance', m.periodAttendance ?? ''],
+      ['Section8', 'NewVisitors', m.newVisitors ?? ''],
+      ['Section8', 'ReturningVisitors', m.returningVisitors ?? ''],
+      ['Section8', 'OpenFollowUps', m.openFollowUps ?? ''],
+    ].map((row) => row.map(csvEscape).join(','));
+
+    await recordSecurityAudit(db, {
+      actorUserId: actor.user.id,
+      action: 'csv_export_brief',
+      targetType: 'meeting_brief',
+      targetId: targetBrief.id,
+      metadata: { scope },
+    });
+
+    return {
+      filename: `faithmap-brief-${new Date().toISOString().slice(0, 10)}.csv`,
       csv: `\uFEFF${[header, ...lines].join('\r\n')}`,
     };
   }

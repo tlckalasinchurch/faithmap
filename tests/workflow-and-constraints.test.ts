@@ -162,6 +162,9 @@ describe('FaithMap Core Business Workflows & Security Rules (CD-01..CD-10, DEC-0
           returningVisitorsCount: 0,
           childrenCount: 0,
           summaryNotes: 'ส่งรายงานจริง',
+          attendance: [
+            { memberId: '00000005-0000-4000-8000-000000000001', attendanceStatus: 'present' },
+          ],
           expectedVersion: bwDraft.version,
         }
       );

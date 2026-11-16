@@ -14,7 +14,7 @@ const reportPayloadSchema = z.object({
   newVisitorsCount: z.number().int().min(0),
   returningVisitorsCount: z.number().int().min(0),
   childrenCount: z.number().int().min(0),
-  offeringAmountThb: z.union([z.number(), z.string()]).optional(),
+  offeringAmountThb: z.union([z.number().finite().min(0), z.string().max(40)]).optional(),
   summaryNotes: z.string().max(4000).nullable().optional(),
   prayerRequests: z.string().max(4000).nullable().optional(),
   careNeedsNotes: z.string().max(4000).nullable().optional(),

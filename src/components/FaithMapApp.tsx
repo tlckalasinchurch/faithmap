@@ -11,6 +11,7 @@ import {
   LogOut,
   Map as MapIcon,
   MapPin,
+  MoreHorizontal,
   ScrollText,
   Sparkles,
   Users,
@@ -47,6 +48,7 @@ export function FaithMapApp() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [reportTargetGroupId, setReportTargetGroupId] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [manualLoginScreen, setManualLoginScreen] = useState(() => {
@@ -56,6 +58,7 @@ export function FaithMapApp() {
 
   const navigateTab = useCallback((tab: string) => {
     setActiveTab(tab);
+    setMoreMenuOpen(false);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', tab);
@@ -78,13 +81,16 @@ export function FaithMapApp() {
   }, []);
 
   useEffect(() => {
-    if (!inboxOpen) return;
+    if (!inboxOpen && !moreMenuOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setInboxOpen(false);
+      if (e.key === 'Escape') {
+        setInboxOpen(false);
+        setMoreMenuOpen(false);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [inboxOpen]);
+  }, [inboxOpen, moreMenuOpen]);
 
   const loadApp = useCallback(
     async (overridePeriodId?: string, skipAutoDemo?: boolean) => {
@@ -142,8 +148,16 @@ export function FaithMapApp() {
     if (!userId) return;
     setLoading(true);
     setManualLoginScreen(false);
+    setActiveTab('dashboard');
+    setReportTargetGroupId(null);
+    setMoreMenuOpen(false);
+    setInboxOpen(false);
+    setErrorMsg(null);
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem('fm_manual_login');
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'dashboard');
+      window.history.replaceState({ tab: 'dashboard' }, '', url.toString());
     }
     try {
       await apiRequest('/api/v1/auth', {
@@ -204,28 +218,50 @@ export function FaithMapApp() {
 
   const unreadCount = workspace.notifications.filter((n) => !n.readAt).length;
   const blockedCount = workspace.overview.metrics.blockedReports;
+  const actorRole = workspace.actor.user.systemRole;
+  const isAdmin = actorRole === 'super_admin' || actorRole === 'admin';
+  const isPastor = actorRole === 'mission_leader';
+  const isBodyLeader = workspace.actor.bodyLeaderBodyIds.length > 0;
+  const isSupervisor = workspace.actor.supervisorGroupIds.length > 0;
+  const isGroupLeader = workspace.actor.groupLeaderGroupIds.length > 0;
+  const canOpenReport = isAdmin || isGroupLeader || isBodyLeader || isSupervisor;
+  const canOpenApprovals = isAdmin || isBodyLeader || isSupervisor;
+  const canOpenBrief = isAdmin || isPastor || isBodyLeader;
+  const actorKey = workspace.actor.user.id;
 
   const navItems = [
     { id: 'dashboard', label: 'ภาพรวม', Icon: LayoutDashboard },
-    { id: 'report', label: 'ส่งรายงาน 3 ขั้น', Icon: FileEdit },
-    {
-      id: 'approvals',
-      label: blockedCount > 0 ? `ตรวจ/อนุมัติ (${blockedCount})` : 'ตรวจ/อนุมัติ',
-      Icon: ClipboardCheck,
-    },
-    { id: 'brief', label: 'สรุปประชุม 20:30', Icon: ScrollText },
+    ...(canOpenReport
+      ? [{ id: 'report', label: 'ส่งรายงาน 3 ขั้น', Icon: FileEdit }]
+      : []),
+    ...(canOpenApprovals
+      ? [
+          {
+            id: 'approvals',
+            label: blockedCount > 0 ? `ตรวจ/อนุมัติ (${blockedCount})` : 'ตรวจ/อนุมัติ',
+            Icon: ClipboardCheck,
+          },
+        ]
+      : []),
+    ...(canOpenBrief
+      ? [{ id: 'brief', label: 'สรุปประชุม 20:30', Icon: ScrollText }]
+      : []),
     { id: 'map', label: 'แผนที่กาฬสินธุ์', Icon: MapIcon },
     { id: 'pastoral', label: 'สมาชิก & ผู้เยี่ยม', Icon: Users },
-    { id: 'governance', label: 'องค์กร & สิทธิ์', Icon: Building2 },
-    ...(workspace.actor.user.systemRole === 'super_admin' ||
-    workspace.actor.user.systemRole === 'admin' ||
-    workspace.actor.bodyLeaderBodyIds.length > 0
+    ...(isAdmin || isBodyLeader
+      ? [{ id: 'governance', label: 'องค์กร & สิทธิ์', Icon: Building2 }]
+      : []),
+    ...(isAdmin || isBodyLeader
       ? [{ id: 'ingestion', label: 'นำเข้า & ตรวจข้อมูล', Icon: ClipboardCheck }]
       : []),
-    ...(workspace.actor.user.systemRole === 'super_admin' || workspace.actor.user.systemRole === 'admin'
+    ...(isAdmin
       ? [{ id: 'field-points', label: 'จุดลงพื้นที่', Icon: MapPin }]
       : []),
   ];
+
+  const effectiveTab = navItems.some((item) => item.id === activeTab)
+    ? activeTab
+    : 'dashboard';
 
   return (
     <div className="min-h-screen overflow-x-hidden text-[#141413]">
@@ -283,16 +319,16 @@ export function FaithMapApp() {
           </div>
         </div>
 
-        {/* Kinetic 7-Mode Navigation Dock */}
-        <div className="border-t border-[#27272A] bg-[#18181B]">
+        {/* Desktop Role-Scoped Navigation Dock (hidden on < md to prevent duplicate mobile nav) */}
+        <div className="hidden border-t border-[#27272A] bg-[#18181B] md:block">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5">
             <nav
               aria-label="เมนูหลัก FaithMap"
-              className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0"
+              className="flex min-w-0 flex-1 flex-wrap gap-2"
             >
               {navItems.map((item) => {
                 const Icon = item.Icon;
-                const isActive = activeTab === item.id;
+                const isActive = effectiveTab === item.id;
                 return (
                   <button
                     key={item.id}
@@ -311,11 +347,13 @@ export function FaithMapApp() {
               })}
             </nav>
 
-            <div className="hidden items-center gap-2 xl:flex">
-              <span className="rounded-lg border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1.5 text-base font-bold text-[#F0F4F8]">
-                {workspace.actor.user.displayName}
-              </span>
-            </div>
+            {!auth.demoEnabled && (
+              <div className="hidden items-center gap-2 xl:flex">
+                <span className="rounded-lg border border-[#F0F4F8]/30 bg-[#27272A] px-3 py-1.5 text-base font-bold text-[#F0F4F8]">
+                  {workspace.actor.user.displayName}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -331,32 +369,39 @@ export function FaithMapApp() {
           </div>
         )}
 
-        {activeTab === 'dashboard' && (
+        {effectiveTab === 'dashboard' && (
           <DashboardTab
+            key={`dash-${actorKey}`}
             workspace={workspace}
             selectedPeriodId={selectedPeriodId}
+            canOpenReport={canOpenReport}
+            canOpenBrief={canOpenBrief}
+            canOpenApprovals={canOpenApprovals}
             onSelectPeriod={async (pid) => {
               setSelectedPeriodId(pid);
               await loadApp(pid);
             }}
             onNavigateTab={navigateTab}
             onOpenGroupReport={(gid) => {
+              if (!canOpenReport) return;
               setReportTargetGroupId(gid);
               navigateTab('report');
             }}
           />
         )}
 
-        {activeTab === 'report' && (
+        {effectiveTab === 'report' && (
           <WeeklyReportTab
+            key={`report-${actorKey}`}
             workspace={workspace}
             preselectedGroupId={reportTargetGroupId}
             onRefresh={() => loadApp()}
           />
         )}
 
-        {activeTab === 'approvals' && (
+        {effectiveTab === 'approvals' && (
           <ApprovalQueueTab
+            key={`approvals-${actorKey}`}
             workspace={workspace}
             onRefresh={() => loadApp()}
             onOpenReportForGroup={(gid) => {
@@ -366,69 +411,159 @@ export function FaithMapApp() {
           />
         )}
 
-        {activeTab === 'brief' && (
-          <MeetingBriefTab workspace={workspace} onRefresh={() => loadApp()} />
+        {effectiveTab === 'brief' && (
+          <MeetingBriefTab key={`brief-${actorKey}`} workspace={workspace} onRefresh={() => loadApp()} />
         )}
 
-        {activeTab === 'map' && (
+        {effectiveTab === 'map' && (
           <KalasinMapTab
+            key={`map-${actorKey}`}
             workspace={workspace}
+            canOpenReport={canOpenReport}
             onSelectGroupReport={(gid) => {
+              if (!canOpenReport) return;
               setReportTargetGroupId(gid);
               navigateTab('report');
             }}
           />
         )}
 
-        {activeTab === 'pastoral' && (
-          <PastoralCareTab workspace={workspace} onRefresh={() => loadApp()} />
+        {effectiveTab === 'pastoral' && (
+          <PastoralCareTab key={`pastoral-${actorKey}`} workspace={workspace} onRefresh={() => loadApp()} />
         )}
 
-        {activeTab === 'governance' && (
-          <GovernanceTab workspace={workspace} onRefresh={() => loadApp()} />
+        {effectiveTab === 'governance' && (
+          <GovernanceTab key={`governance-${actorKey}`} workspace={workspace} onRefresh={() => loadApp()} />
         )}
 
-        {activeTab === 'field-points' && <TeamFieldPointsTab workspace={workspace} />}
+        {effectiveTab === 'field-points' && (
+          <TeamFieldPointsTab key={`field-${actorKey}`} workspace={workspace} />
+        )}
 
-        {activeTab === 'ingestion' && (
-          <DataIngestionTab workspace={workspace} onRefreshWorkspace={() => loadApp()} />
+        {effectiveTab === 'ingestion' && (
+          <DataIngestionTab key={`ingestion-${actorKey}`} workspace={workspace} onRefreshWorkspace={() => loadApp()} />
         )}
       </main>
 
-      {/* Mobile / LINE LIFF Bottom Navigation Bar (5 primary tabs + safe-area) */}
-      <nav
-        aria-label="เมนูลัดมือถือ"
-        className="fixed inset-x-0 bottom-0 z-30 border-t-2 border-[var(--fm-ink)] bg-[#18181B] pb-[env(safe-area-inset-bottom)] md:hidden"
-      >
-        <div className="grid grid-cols-5">
-          {navItems.slice(0, 5).map((item) => {
-            const Icon = item.Icon;
-            const isActive = activeTab === item.id;
-            const shortNames: Record<string, string> = {
-              dashboard: 'ภาพรวม',
-              report: 'ส่งรายงาน',
-              approvals: 'อนุมัติ',
-              brief: 'สรุป 20:30',
-              map: 'แผนที่',
-            };
-            return (
-              <button
-                key={`bottom-${item.id}`}
-                type="button"
-                onClick={() => navigateTab(item.id)}
-                className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-base font-extrabold ${
-                  isActive
-                    ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
-                    : 'text-[var(--fm-paper)]'
-                }`}
+      {/* Mobile / LINE LIFF Single Primary Bottom Navigation Bar */}
+      {(() => {
+        const hasOverflow = navItems.length > 5;
+        const primaryMobileItems = hasOverflow ? navItems.slice(0, 4) : navItems;
+        const overflowMobileItems = hasOverflow ? navItems.slice(4) : [];
+        const isOverflowActive = overflowMobileItems.some((item) => item.id === effectiveTab);
+        const shortNames: Record<string, string> = {
+          dashboard: 'ภาพรวม',
+          report: 'ส่งรายงาน',
+          approvals: 'อนุมัติ',
+          brief: 'สรุป 20:30',
+          map: 'แผนที่',
+          pastoral: 'อภิบาล',
+          governance: 'องค์กร',
+          ingestion: 'นำเข้า',
+          'field-points': 'จุดพื้นที่',
+        };
+        const colClass =
+          primaryMobileItems.length + (hasOverflow ? 1 : 0) === 4
+            ? 'grid-cols-4'
+            : 'grid-cols-5';
+
+        return (
+          <>
+            <nav
+              aria-label="เมนูลัดมือถือ"
+              className="fixed inset-x-0 bottom-0 z-30 border-t-2 border-[var(--fm-ink)] bg-[#18181B] pb-[env(safe-area-inset-bottom)] md:hidden"
+            >
+              <div className={`grid ${colClass}`}>
+                {primaryMobileItems.map((item) => {
+                  const Icon = item.Icon;
+                  const isActive = effectiveTab === item.id;
+                  return (
+                    <button
+                      key={`bottom-${item.id}`}
+                      type="button"
+                      onClick={() => navigateTab(item.id)}
+                      className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-base font-extrabold ${
+                        isActive
+                          ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
+                          : 'text-[var(--fm-paper)]'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                      <span className="whitespace-nowrap">
+                        {shortNames[item.id] ?? item.label}
+                      </span>
+                    </button>
+                  );
+                })}
+                {hasOverflow && (
+                  <button
+                    type="button"
+                    aria-expanded={moreMenuOpen}
+                    onClick={() => setMoreMenuOpen((prev) => !prev)}
+                    className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-base font-extrabold ${
+                      isOverflowActive || moreMenuOpen
+                        ? 'bg-[var(--fm-lime)] text-[var(--fm-ink)]'
+                        : 'text-[var(--fm-paper)]'
+                    }`}
+                  >
+                    <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
+                    <span className="whitespace-nowrap">เพิ่มเติม</span>
+                  </button>
+                )}
+              </div>
+            </nav>
+
+            {hasOverflow && moreMenuOpen && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="เมนูเพิ่มเติม"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setMoreMenuOpen(false);
+                }}
+                className="fixed inset-0 z-40 flex items-end bg-[#141413]/70 md:hidden"
               >
-                <Icon className="h-5 w-5" aria-hidden="true" />
-                <span className="whitespace-nowrap">{shortNames[item.id] ?? item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+                <div className="w-full border-t-4 border-[#141413] bg-[#F0F4F8] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="font-display text-xl font-extrabold text-[#141413]">
+                      เมนูเพิ่มเติม
+                    </h2>
+                    <button
+                      type="button"
+                      aria-label="ปิดเมนูเพิ่มเติม"
+                      onClick={() => setMoreMenuOpen(false)}
+                      className="fm-btn fm-btn-paper min-h-[48px] min-w-[48px] p-2"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="grid gap-2">
+                    {overflowMobileItems.map((item) => {
+                      const Icon = item.Icon;
+                      const isActive = effectiveTab === item.id;
+                      return (
+                        <button
+                          key={`more-${item.id}`}
+                          type="button"
+                          onClick={() => navigateTab(item.id)}
+                          className={`flex min-h-[48px] w-full items-center gap-3 rounded-xl border-2 border-[#141413] px-4 py-3 text-left text-base font-extrabold ${
+                            isActive
+                              ? 'bg-[#C8FF00] text-[#141413]'
+                              : 'bg-white text-[#141413]'
+                          }`}
+                        >
+                          <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* In-App Notification Inbox Drawer (DEC-07: In-App + LINE OA only, zero Web Push) */}
       {inboxOpen && (
@@ -476,9 +611,14 @@ export function FaithMapApp() {
 
             <div className="divide-y-2 divide-[#141413] overflow-y-auto">
               {workspace.notifications.length === 0 ? (
-                <p className="p-8 text-center text-base font-bold text-[#27272A]">
-                  ยังไม่มีรายการแจ้งเตือนในรอบนี้
-                </p>
+                <div className="bg-white p-8 text-center">
+                  <p className="text-lg font-extrabold text-[#141413]">
+                    ยังไม่มีรายการแจ้งเตือนในรอบนี้
+                  </p>
+                  <p className="mt-1.5 text-base font-medium text-[#27272A]">
+                    ระบบจะแจ้งเตือนที่นี่เมื่อมีการส่งรายงาน ขอแก้ไขรายงาน อนุมัติ หรือส่งคำเตือนประจำสัปดาห์
+                  </p>
+                </div>
               ) : (
                 workspace.notifications.map((n) => (
                   <div

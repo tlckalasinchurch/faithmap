@@ -251,11 +251,16 @@ function ReportEditor({
   }
 
   function groupBody(action: 'save_draft' | 'submit') {
+    const activeIds = new Set(groupMembers.map((m) => m.id));
+    const filteredAttendance: Record<string, Mark> = {};
+    for (const [id, status] of Object.entries(form.attendance)) {
+      if (activeIds.has(id)) filteredAttendance[id] = status;
+    }
     return {
       action,
       periodId: period.id,
       groupId,
-      payload: buildReportPayload(form, report?.version),
+      payload: buildReportPayload({ ...form, attendance: filteredAttendance }, report?.version),
     };
   }
 

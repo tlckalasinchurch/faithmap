@@ -100,3 +100,157 @@ export async function clearOfflineDraft(periodId: string, groupId: string): Prom
     // ignore
   }
 }
+
+export type AttendanceStatusValue = 'present' | 'absent' | 'leave' | 'online';
+
+export interface OfflineDraftContentState {
+  teachingTopic: string;
+  scriptureRef: string;
+  actPrayer: boolean;
+  actFellowship: boolean;
+  actOther: string;
+  locationText: string;
+  atmosphereNotes: string;
+  followupNeedsText: string;
+  nextWeekPlan: string;
+  supportNeededText: string;
+}
+
+export interface HydratedOfflineDraftState {
+  meetingHeld: boolean;
+  notHeldReason: string;
+  meetingDate: string;
+  totalAttendees: number;
+  memberAttendees: number;
+  newVisitorsCount: number;
+  returningVisitorsCount: number;
+  childrenCount: number;
+  offeringAmountThb: string;
+  summaryNotes: string;
+  prayerRequests: string;
+  careNeedsNotes: string;
+  content: OfflineDraftContentState;
+  attendanceMap: Record<string, AttendanceStatusValue>;
+  expectedVersion?: number;
+}
+
+const VALID_ATTENDANCE_STATUSES = new Set<string>(['present', 'absent', 'leave', 'online']);
+
+function toSafeNonNegInt(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.trunc(value);
+  }
+  return fallback;
+}
+
+/**
+ * Acceptance Defect #2: Restores all saved fields of an offline weekly report draft
+ * (including attendance marks such as 'online' and 'leave', counters, offering, and FR-07.2 content).
+ */
+export function extractOfflineDraftState(
+  payload: Record<string, unknown>,
+  currentMemberIds: string[],
+  fallbackStartDate: string,
+  baseAttendanceMap?: Record<string, AttendanceStatusValue>
+): HydratedOfflineDraftState {
+  const meetingHeld = typeof payload.meetingHeld === 'boolean' ? payload.meetingHeld : true;
+  const notHeldReason = typeof payload.notHeldReason === 'string' ? payload.notHeldReason : '';
+  const meetingDate =
+    typeof payload.meetingDate === 'string' && payload.meetingDate.trim()
+      ? payload.meetingDate
+      : fallbackStartDate;
+
+  const newVisitorsCount = meetingHeld ? toSafeNonNegInt(payload.newVisitorsCount, 0) : 0;
+  const returningVisitorsCount = meetingHeld ? toSafeNonNegInt(payload.returningVisitorsCount, 0) : 0;
+  const childrenCount = meetingHeld ? toSafeNonNegInt(payload.childrenCount, 0) : 0;
+
+  let offeringAmountThb = '0';
+  if (meetingHeld) {
+    if (typeof payload.offeringAmountThb === 'number' && Number.isFinite(payload.offeringAmountThb)) {
+      offeringAmountThb = String(payload.offeringAmountThb);
+    } else if (typeof payload.offeringAmountThb === 'string') {
+      offeringAmountThb = payload.offeringAmountThb;
+    }
+  }
+
+  const activitiesObj =
+    payload.activities && typeof payload.activities === 'object'
+      ? (payload.activities as Record<string, unknown>)
+      : {};
+
+  const content: OfflineDraftContentState = {
+    teachingTopic: typeof payload.teachingTopic === 'string' ? payload.teachingTopic : '',
+    scriptureRef: typeof payload.scriptureRef === 'string' ? payload.scriptureRef : '',
+    actPrayer: Boolean(activitiesObj.prayer),
+    actFellowship: Boolean(activitiesObj.fellowship),
+    actOther: typeof activitiesObj.other === 'string' ? activitiesObj.other : '',
+    locationText: typeof payload.locationText === 'string' ? payload.locationText : '',
+    atmosphereNotes: typeof payload.atmosphereNotes === 'string' ? payload.atmosphereNotes : '',
+    followupNeedsText:
+      typeof payload.followupNeedsText === 'string' ? payload.followupNeedsText : '',
+    nextWeekPlan: typeof payload.nextWeekPlan === 'string' ? payload.nextWeekPlan : '',
+    supportNeededText:
+      typeof payload.supportNeededText === 'string' ? payload.supportNeededText : '',
+  };
+
+  const activeIds = new Set(currentMemberIds);
+  const attendanceMap: Record<string, AttendanceStatusValue> = {};
+  for (const id of currentMemberIds) {
+    attendanceMap[id] = baseAttendanceMap?.[id] ?? 'present';
+  }
+
+  if (Array.isArray(payload.attendance)) {
+    for (const item of payload.attendance) {
+      if (!item || typeof item !== 'object') continue;
+      const entry = item as Record<string, unknown>;
+      const memberId = entry.memberId;
+      const status = entry.attendanceStatus;
+      if (
+        typeof memberId === 'string' &&
+        activeIds.has(memberId) &&
+        typeof status === 'string' &&
+        VALID_ATTENDANCE_STATUSES.has(status)
+      ) {
+        attendanceMap[memberId] = status as AttendanceStatusValue;
+      }
+    }
+  }
+
+  const memberAttendees = !meetingHeld
+    ? 0
+    : currentMemberIds.length > 0
+      ? Object.values(attendanceMap).filter((s) => s === 'present' || s === 'online').length
+      : toSafeNonNegInt(payload.memberAttendees, 0);
+
+  const totalAttendees = !meetingHeld
+    ? 0
+    : typeof payload.totalAttendees === 'number' &&
+        Number.isFinite(payload.totalAttendees) &&
+        payload.totalAttendees >= 0
+      ? Math.trunc(payload.totalAttendees)
+      : memberAttendees + newVisitorsCount + returningVisitorsCount;
+
+  const expectedVersion =
+    typeof payload.expectedVersion === 'number' && Number.isInteger(payload.expectedVersion)
+      ? payload.expectedVersion
+      : undefined;
+
+  return {
+    meetingHeld,
+    notHeldReason,
+    meetingDate,
+    totalAttendees,
+    memberAttendees,
+    newVisitorsCount,
+    returningVisitorsCount,
+    childrenCount,
+    offeringAmountThb,
+    summaryNotes: typeof payload.summaryNotes === 'string' ? payload.summaryNotes : '',
+    prayerRequests: typeof payload.prayerRequests === 'string' ? payload.prayerRequests : '',
+    careNeedsNotes: typeof payload.careNeedsNotes === 'string' ? payload.careNeedsNotes : '',
+    content,
+    attendanceMap,
+    expectedVersion,
+  };
+}
+

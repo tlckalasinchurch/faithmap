@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Prohibited coordinator personal data must NEVER be stored in plaintext or crackable unsalted hashes in repository files. Protection is enforced via Structural Synthetic Validation in scripts/check-pii-safeguards.mjs and optional salted HMACs via CI secrets (PII_HMAC_KEY).",
+  "strategy": "structural_and_hmac_secret",
+  "syntheticCoordinatorPattern": "^ผู้ประสานงาน จุดที่ (?:[1-9]|1\\d|2[0-3])$",
+  "syntheticPhonePattern": "^080-000-00(?:0[1-9]|1\\d|2[0-3])$"
+}

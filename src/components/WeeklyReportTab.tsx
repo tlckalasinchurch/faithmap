@@ -18,11 +18,26 @@ import { apiRequest } from '@/lib/api-client';
 import { normalizeThaiPhone } from '@/lib/phone';
 import {
   clearOfflineDraft,
+  extractOfflineDraftState,
   loadOfflineDraft,
   saveOfflineDraft,
+  type AttendanceStatusValue,
 } from '@/lib/offline-drafts';
 import type { WorkspacePayload } from '@/lib/types';
 import { StatusBadge } from './StatusBadge';
+
+const EMPTY_CONTENT_STATE = {
+  teachingTopic: '',
+  scriptureRef: '',
+  actPrayer: false,
+  actFellowship: false,
+  actOther: '',
+  locationText: '',
+  atmosphereNotes: '',
+  followupNeedsText: '',
+  nextWeekPlan: '',
+  supportNeededText: '',
+};
 
 const QUICK_SUMMARY_CHIPS = [
   'นมัสการเปี่ยมพลัง สมาชิกมีส่วนร่วมครบ',
@@ -73,6 +88,8 @@ export function WeeklyReportTab({
     () => workspace.members.filter((m) => m.groupId === selectedGroupId),
     [workspace.members, selectedGroupId]
   );
+  const groupMembersRef = useRef(groupMembers);
+  groupMembersRef.current = groupMembers;
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [meetingHeld, setMeetingHeld] = useState(true);
@@ -88,20 +105,9 @@ export function WeeklyReportTab({
   const [prayerRequests, setPrayerRequests] = useState('');
   const [careNeedsNotes, setCareNeedsNotes] = useState('');
   // FR-07.2 content fields
-  const [content, setContent] = useState({
-    teachingTopic: '',
-    scriptureRef: '',
-    actPrayer: false,
-    actFellowship: false,
-    actOther: '',
-    locationText: '',
-    atmosphereNotes: '',
-    followupNeedsText: '',
-    nextWeekPlan: '',
-    supportNeededText: '',
-  });
+  const [content, setContent] = useState(EMPTY_CONTENT_STATE);
   const [attendanceMap, setAttendanceMap] = useState<
-    Record<string, 'present' | 'absent' | 'leave' | 'online'>
+    Record<string, AttendanceStatusValue>
   >({});
 
   const [reportStatus, setReportStatus] = useState<string>('not_submitted');
@@ -140,11 +146,35 @@ export function WeeklyReportTab({
     };
   }, []);
 
+  // Defect #3: Synchronize active group member roster additively without clobbering unsaved Step 2 marks.
+  useEffect(() => {
+    const activeIds = new Set(groupMembers.map((m) => m.id));
+    setAttendanceMap((prev) => {
+      let changed = false;
+      const next: Record<string, AttendanceStatusValue> = {};
+      for (const [id, status] of Object.entries(prev)) {
+        if (activeIds.has(id)) {
+          next[id] = status;
+        } else {
+          changed = true;
+        }
+      }
+      for (const m of groupMembers) {
+        if (!(m.id in next)) {
+          next[m.id] = 'present';
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [groupMembers]);
+
   const loadGroupReport = useCallback(async () => {
     if (!selectedGroupId) return;
-    const key = `${period.id}:${selectedGroupId}`;
+    const key = `${workspace.actor.user.id}:${period.id}:${selectedGroupId}`;
     loadedKeyRef.current = key;
     setStatusMessage(null);
+    setVisitorError(null);
 
     try {
       const res = await apiRequest<{
@@ -179,16 +209,29 @@ export function WeeklyReportTab({
           };
           attendanceRecords: Array<{
             memberId: string;
-            attendanceStatus: 'present' | 'absent' | 'leave' | 'online';
+            attendanceStatus: AttendanceStatusValue;
           }>;
         } | null;
       }>(`/api/v1/reports?periodId=${period.id}&groupId=${selectedGroupId}`);
 
+      if (loadedKeyRef.current !== key) return;
+
+      const currentMembers = groupMembersRef.current;
+      const currentMemberIds = currentMembers.map((m) => m.id);
+      const activeIdSet = new Set(currentMemberIds);
+
       const detail = res.detail;
       const offline = await loadOfflineDraft(period.id, selectedGroupId);
+      if (loadedKeyRef.current !== key) return;
+
+      let baseAttendanceMap: Record<string, AttendanceStatusValue> = {};
+      let serverStatus = 'not_submitted';
+      let serverVersion: number | undefined;
 
       if (detail?.report && !detail.report.isDraftHidden) {
         const r = detail.report;
+        serverStatus = r.status;
+        serverVersion = r.version;
         setReportStatus(r.status);
         setRevisionReason(r.revisionReason);
         setIsBlocked(r.isBlocked);
@@ -219,12 +262,18 @@ export function WeeklyReportTab({
           supportNeededText: r.supportNeededText ?? '',
         });
 
-        const map: Record<string, 'present' | 'absent' | 'leave' | 'online'> = {};
-        for (const m of groupMembers) map[m.id] = 'present';
-        for (const rec of detail.attendanceRecords) map[rec.memberId] = rec.attendanceStatus;
-        setAttendanceMap(map);
+        for (const m of currentMembers) baseAttendanceMap[m.id] = 'present';
+        for (const rec of detail.attendanceRecords) {
+          if (activeIdSet.has(rec.memberId)) {
+            baseAttendanceMap[rec.memberId] = rec.attendanceStatus;
+          }
+        }
+        setAttendanceMap(baseAttendanceMap);
       } else {
-        setReportStatus(detail?.report?.status ?? 'not_submitted');
+        serverStatus = detail?.report?.status ?? 'not_submitted';
+        baseAttendanceMap = {};
+        for (const m of currentMembers) baseAttendanceMap[m.id] = 'present';
+        setReportStatus(serverStatus);
         setRevisionReason(null);
         setIsBlocked(false);
         setBlockedReason(null);
@@ -232,8 +281,8 @@ export function WeeklyReportTab({
         setMeetingHeld(true);
         setNotHeldReason('');
         setMeetingDate(period.startDate);
-        setMemberAttendees(groupMembers.length);
-        setTotalAttendees(groupMembers.length);
+        setMemberAttendees(currentMembers.length);
+        setTotalAttendees(currentMembers.length);
         setNewVisitorsCount(0);
         setReturningVisitorsCount(0);
         setChildrenCount(0);
@@ -241,30 +290,75 @@ export function WeeklyReportTab({
         setSummaryNotes('');
         setPrayerRequests('');
         setCareNeedsNotes('');
-        const map: Record<string, 'present' | 'absent' | 'leave' | 'online'> = {};
-        for (const m of groupMembers) map[m.id] = 'present';
-        setAttendanceMap(map);
+        setContent(EMPTY_CONTENT_STATE);
+        setAttendanceMap(baseAttendanceMap);
       }
 
+      const serverLocked = ['submitted', 'under_review', 'approved'].includes(serverStatus);
       if (offline && !offline.synced && canEditSelected) {
-        const p = offline.payload;
-        if (typeof p.summaryNotes === 'string') setSummaryNotes(p.summaryNotes);
-        if (typeof p.totalAttendees === 'number') setTotalAttendees(p.totalAttendees);
-        setSaveState('offline_queued');
-        setStatusMessage('กู้คืนฉบับร่างค้างส่งจากในเครื่องเรียบร้อยแล้ว');
+        if (serverLocked) {
+          setSaveState('idle');
+          setStatusMessage(
+            'พบฉบับร่างค้างส่งในเครื่อง แต่รายงานสัปดาห์นี้ถูกส่ง/อนุมัติแล้ว ระบบจึงแสดงข้อมูลล่าสุดจากเซิร์ฟเวอร์'
+          );
+        } else {
+          const hydrated = extractOfflineDraftState(
+            offline.payload,
+            currentMemberIds,
+            period.startDate,
+            baseAttendanceMap
+          );
+          setMeetingHeld(hydrated.meetingHeld);
+          setNotHeldReason(hydrated.notHeldReason);
+          setMeetingDate(hydrated.meetingDate);
+          setTotalAttendees(hydrated.totalAttendees);
+          setMemberAttendees(hydrated.memberAttendees);
+          setNewVisitorsCount(hydrated.newVisitorsCount);
+          setReturningVisitorsCount(hydrated.returningVisitorsCount);
+          setChildrenCount(hydrated.childrenCount);
+          setOfferingAmountThb(hydrated.offeringAmountThb);
+          setSummaryNotes(hydrated.summaryNotes);
+          setPrayerRequests(hydrated.prayerRequests);
+          setCareNeedsNotes(hydrated.careNeedsNotes);
+          setContent(hydrated.content);
+          setAttendanceMap(hydrated.attendanceMap);
+          setSaveState('offline_queued');
+
+          if (
+            hydrated.expectedVersion !== undefined &&
+            serverVersion !== undefined &&
+            hydrated.expectedVersion !== serverVersion
+          ) {
+            setStatusMessage(
+              `กู้คืนฉบับร่างค้างส่งจากในเครื่องแล้ว (หมายเหตุ: ข้อมูลบนเซิร์ฟเวอร์ถูกอัปเดตเป็น v${serverVersion} กรุณาตรวจสอบก่อนบันทึกหรือส่ง)`
+            );
+          } else {
+            setStatusMessage('กู้คืนฉบับร่างค้างส่งจากในเครื่องเรียบร้อยแล้ว');
+          }
+        }
       } else {
         setSaveState('idle');
       }
     } catch (err) {
+      if (loadedKeyRef.current !== key) return;
+      setSaveState('error');
       setStatusMessage(err instanceof Error ? err.message : 'โหลดข้อมูลรายงานไม่สำเร็จ');
     }
-  }, [period.id, period.startDate, selectedGroupId, groupMembers, canEditSelected]);
+  }, [period.id, period.startDate, selectedGroupId, canEditSelected, workspace.actor.user.id]);
 
   useEffect(() => {
     void loadGroupReport();
   }, [loadGroupReport]);
 
   function buildPayload() {
+    const validAttendance = meetingHeld
+      ? groupMembers
+          .filter((m) => attendanceMap[m.id] !== undefined)
+          .map((m) => ({
+            memberId: m.id,
+            attendanceStatus: attendanceMap[m.id]!,
+          }))
+      : [];
     return {
       meetingHeld,
       notHeldReason: meetingHeld ? null : notHeldReason,
@@ -286,21 +380,21 @@ export function WeeklyReportTab({
       followupNeedsText: content.followupNeedsText,
       nextWeekPlan: content.nextWeekPlan,
       supportNeededText: content.supportNeededText,
-      attendance: Object.entries(attendanceMap).map(([memberId, attendanceStatus]) => ({
-        memberId,
-        attendanceStatus,
-      })),
+      attendance: validAttendance,
       ...(version !== undefined ? { expectedVersion: version } : {}),
     };
   }
 
   function handleToggleAttendance(
     memberId: string,
-    status: 'present' | 'absent' | 'leave' | 'online'
+    status: AttendanceStatusValue
   ) {
     const next = { ...attendanceMap, [memberId]: status };
     setAttendanceMap(next);
-    const presentCount = Object.values(next).filter((s) => s === 'present' || s === 'online').length;
+    const presentCount = groupMembers.filter((m) => {
+      const s = next[m.id];
+      return s === 'present' || s === 'online';
+    }).length;
     setMemberAttendees(presentCount);
     setTotalAttendees(
       presentCount +
@@ -356,9 +450,39 @@ export function WeeklyReportTab({
 
   async function handleSubmitReport() {
     if (!canEditSelected || isLocked) return;
+    const payload = buildPayload();
+
+    if (!meetingHeld && !notHeldReason.trim()) {
+      setSaveState('error');
+      setStatusMessage('กรุณาระบุเหตุผลที่งดประชุมก่อนส่งรายงาน');
+      setStep(1);
+      return;
+    }
+
+    if (meetingHeld) {
+      const validSet = new Set<string>(['present', 'absent', 'leave', 'online']);
+      const missingCount = groupMembers.filter((m) => !validSet.has(attendanceMap[m.id] ?? '')).length;
+      if (groupMembers.length > 0 && (payload.attendance.length === 0 || missingCount > 0)) {
+        setSaveState('error');
+        setStatusMessage(
+          `กรุณาเช็คชื่อสมาชิกในกลุ่มให้ครบทั้ง ${groupMembers.length} คน (ยังขาด ${missingCount} คน) ก่อนส่งรายงาน`
+        );
+        setStep(2);
+        return;
+      }
+
+      const rawOffering = String(offeringAmountThb ?? '').trim();
+      const offeringNum = rawOffering === '' ? 0 : Number(rawOffering);
+      if (!Number.isFinite(offeringNum) || offeringNum < 0) {
+        setSaveState('error');
+        setStatusMessage('ยอดถวายทรัพย์ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+        setStep(2);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setStatusMessage(null);
-    const payload = buildPayload();
 
     try {
       const res = await apiRequest<{
@@ -385,6 +509,7 @@ export function WeeklyReportTab({
       setReportStatus(res.report.status);
       setIsBlocked(res.report.isBlocked);
       setBlockedReason(res.report.blockedReason);
+      setSaveState('saved');
       await clearOfflineDraft(period.id, selectedGroupId);
       setStatusMessage(
         res.report.isBlocked
@@ -393,6 +518,7 @@ export function WeeklyReportTab({
       );
       await onRefresh();
     } catch (err) {
+      setSaveState('error');
       setStatusMessage(err instanceof Error ? err.message : 'ส่งรายงานไม่สำเร็จ');
     } finally {
       setSubmitting(false);
@@ -562,7 +688,14 @@ export function WeeklyReportTab({
           )}
 
           {statusMessage && (
-            <div className="rounded-xl border-2 border-[#141413] bg-[#C8FF00] p-4 text-base font-extrabold text-[#141413]">
+            <div
+              role={saveState === 'error' ? 'alert' : 'status'}
+              className={`rounded-xl border-2 border-[#141413] p-4 text-base font-extrabold ${
+                saveState === 'error'
+                  ? 'bg-[#FFE4E6] text-[#881337]'
+                  : 'bg-[#C8FF00] text-[#141413]'
+              }`}
+            >
               {statusMessage}
             </div>
           )}
@@ -653,6 +786,7 @@ export function WeeklyReportTab({
               type="button"
               onClick={() => {
                 if (!meetingHeld && !notHeldReason.trim()) {
+                  setSaveState('error');
                   setStatusMessage('กรุณาระบุเหตุผลที่งดประชุมก่อนดำเนินการต่อ');
                   return;
                 }
@@ -725,23 +859,23 @@ export function WeeklyReportTab({
                     className="fm-input sm:col-span-2"
                   />
                 </div>
-                <label className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border-2 border-[#141413] bg-white px-4 py-2 text-base font-bold">
+                <label className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border-2 border-[#141413] bg-white px-4 py-2.5 text-base font-bold transition hover:bg-[#DBEAFE]">
                   <input
                     type="checkbox"
                     checked={visitorConsent}
                     onChange={(e) => setVisitorConsent(e.target.checked)}
-                    className="h-5 w-5 accent-[#1D4ED8]"
+                    className="h-6 w-6 shrink-0 accent-[#1D4ED8]"
                   />
                   <span>
                     ผู้เยี่ยมยินยอมให้เก็บเบอร์โทรเพื่อติดต่อเยี่ยมเยียน
                   </span>
                 </label>
-                <label className="flex min-h-[48px] cursor-pointer items-center gap-3 text-base font-bold text-[#141413]">
+                <label className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border-2 border-[#141413] bg-white px-4 py-2.5 text-base font-bold text-[#141413] transition hover:bg-[#DBEAFE]">
                   <input
                     type="checkbox"
                     checked={visitorFollowUp}
                     onChange={(e) => setVisitorFollowUp(e.target.checked)}
-                    className="h-5 w-5 accent-[#1D4ED8]"
+                    className="h-6 w-6 shrink-0 accent-[#1D4ED8]"
                   />
                   <span>สร้างงานเยี่ยมติดตามอัตโนมัติ (Follow-Up)</span>
                 </label>
@@ -774,6 +908,7 @@ export function WeeklyReportTab({
                             <button
                               key={opt}
                               type="button"
+                              aria-pressed={status === opt}
                               disabled={!canEditSelected || isLocked}
                               onClick={() => handleToggleAttendance(m.id, opt)}
                               className={`min-h-[48px] min-w-[78px] rounded-xl border-2 border-[#141413] px-3 text-base font-extrabold transition ${

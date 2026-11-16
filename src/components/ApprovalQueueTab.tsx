@@ -119,9 +119,27 @@ export function ApprovalQueueTab({
 
       <section className="fm-panel divide-y-2 divide-[#141413] overflow-hidden">
         {filteredReports.length === 0 ? (
-          <p className="p-8 text-center text-base font-bold text-[var(--fm-ink)]">
-            ไม่มีรายงานในหมวดนี้
-          </p>
+          <div className="bg-white p-8 text-center">
+            <p className="text-lg font-extrabold text-[#141413]">
+              {workspace.reports.length === 0
+                ? `ยังไม่มีรายงานส่งเข้ามาในรอบ ${workspace.overview.selectedPeriod.periodKey}`
+                : 'ไม่มีรายงานที่ตรงกับตัวกรองนี้'}
+            </p>
+            <p className="mt-1.5 text-base font-medium text-[#27272A]">
+              {workspace.reports.length === 0
+                ? 'เมื่อผู้รับผิดชอบพันธกิจบ้านกดส่งรายงานประจำสัปดาห์ รายการจะปรากฏที่นี่เพื่อให้คุณตรวจทานและอนุมัติ'
+                : 'ลองเปลี่ยนตัวกรองสถานะด้านบนหรือดูรายการทั้งหมดในรอบนี้'}
+            </p>
+            {statusFilter !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('ALL')}
+                className="fm-btn fm-btn-paper mt-4 min-h-[48px] px-4 text-base font-bold"
+              >
+                แสดงรายงานทั้งหมด ({workspace.reports.length})
+              </button>
+            )}
+          </div>
         ) : (
         filteredReports.map((report) => {
           const canReview =
@@ -320,50 +338,75 @@ export function ApprovalQueueTab({
                             ผู้ส่งรายงานไม่สามารถอนุมัติรายงานของตนเองได้
                           </span>
                         ) : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={busyId === report.id || report.isBlocked}
-                              onClick={() =>
-                                runAction(
-                                  report,
-                                  {
-                                    action: 'approve',
-                                    reportId: report.id,
-                                    decision: 'approve',
-                                    notesOrReason: noteText || 'อนุมัติ',
-                                    expectedVersion: report.version,
-                                  },
-                                  `อนุมัติรายงาน ${report.groupName} เรียบร้อยแล้ว`
-                                )
-                              }
-                              className="fm-btn fm-btn-lime text-base"
-                            >
-                              <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                              <span>อนุมัติรายงาน</span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busyId === report.id || report.isBlocked}
-                              onClick={() =>
-                                runAction(
-                                  report,
-                                  {
-                                    action: 'approve',
-                                    reportId: report.id,
-                                    decision: 'request_revision',
-                                    notesOrReason: noteText,
-                                    expectedVersion: report.version,
-                                  },
-                                  `หัวหน้าบอดี้ส่งกลับ ${report.groupName} เพื่อแก้ไขแล้ว`
-                                )
-                              }
-                              className="fm-btn bg-[#FFB703] text-base text-[#141413]"
-                            >
-                              <RotateCcw className="h-5 w-5" aria-hidden="true" />
-                              <span>ส่งกลับแก้ไข</span>
-                            </button>
-                          </>
+                          (() => {
+                            const awaitingSupervisorReview =
+                              report.requiresSupervisorReview && !report.supervisorReviewedAt;
+                            return (
+                              <>
+                                {awaitingSupervisorReview && (
+                                  <span className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-[#141413] bg-[#FEF3C7] px-4 text-base font-extrabold text-[#92400E]">
+                                    รอหัวหน้าแคร์/ผู้ประสานงานตรวจทานก่อน (DEC-04)
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={
+                                    busyId === report.id ||
+                                    report.isBlocked ||
+                                    awaitingSupervisorReview
+                                  }
+                                  title={
+                                    awaitingSupervisorReview
+                                      ? 'รอหัวหน้าแคร์/ผู้ประสานงานตรวจทานก่อน (DEC-04)'
+                                      : undefined
+                                  }
+                                  onClick={() =>
+                                    runAction(
+                                      report,
+                                      {
+                                        action: 'approve',
+                                        reportId: report.id,
+                                        decision: 'approve',
+                                        notesOrReason: noteText || 'อนุมัติ',
+                                        expectedVersion: report.version,
+                                      },
+                                      `อนุมัติรายงาน ${report.groupName} เรียบร้อยแล้ว`
+                                    )
+                                  }
+                                  className="fm-btn fm-btn-lime text-base"
+                                >
+                                  <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                                  <span>อนุมัติรายงาน</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busyId === report.id || report.isBlocked}
+                                  onClick={() => {
+                                    if (!noteText.trim()) {
+                                      setReasonErrorId(report.id);
+                                      noteInputRefs.current[report.id]?.focus();
+                                      return;
+                                    }
+                                    void runAction(
+                                      report,
+                                      {
+                                        action: 'approve',
+                                        reportId: report.id,
+                                        decision: 'request_revision',
+                                        notesOrReason: noteText.trim(),
+                                        expectedVersion: report.version,
+                                      },
+                                      `หัวหน้าบอดี้ส่งกลับ ${report.groupName} เพื่อแก้ไขแล้ว`
+                                    );
+                                  }}
+                                  className="fm-btn bg-[#FFB703] text-base text-[#141413]"
+                                >
+                                  <RotateCcw className="h-5 w-5" aria-hidden="true" />
+                                  <span>ส่งกลับแก้ไข</span>
+                                </button>
+                              </>
+                            );
+                          })()
                         )}
                       </>
                     )}

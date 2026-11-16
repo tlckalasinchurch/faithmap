@@ -15,7 +15,8 @@
     "db:seed": "tsx src/server/db/run-seed.ts",
     "db:bootstrap-admin": "tsx src/server/db/run-bootstrap-admin.ts",
     "check:line-config": "tsx scripts/check-line-config.ts",
-    "check:bundle": "node scripts/check-bundle-pii.mjs"
+    "check:bundle": "node scripts/check-bundle-pii.mjs",
+    "check:safeguards": "node scripts/check-pii-safeguards.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",

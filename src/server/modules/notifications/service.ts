@@ -78,8 +78,13 @@ export async function dispatchNotification(
         status = 'sent';
         providerResponse = { status: resp.status };
       } else {
+        const bodyText = await resp.text();
         status = 'failed';
-        providerResponse = { status: resp.status, body: await resp.text() };
+        providerResponse = {
+          status: resp.status,
+          body: bodyText,
+          isQuotaExceeded: resp.status === 429,
+        };
       }
     } catch (err) {
       status = 'failed';

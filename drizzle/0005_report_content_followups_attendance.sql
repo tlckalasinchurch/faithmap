@@ -1,3 +1,20 @@
+-- Pre-migration validation: verify no corrupt, unexpected, or NULL attendance records exist before altering schema or data (Fail Fast)
+DO $$
+DECLARE
+  v_abnormal_count integer;
+  v_samples text;
+BEGIN
+  SELECT count(*), string_agg(DISTINCT coalesce("attendance_status", 'NULL'), ', ')
+  INTO v_abnormal_count, v_samples
+  FROM "attendance_records"
+  WHERE "attendance_status" IS NULL
+     OR "attendance_status" NOT IN ('present', 'absent', 'leave', 'online', 'excused');
+
+  IF v_abnormal_count > 0 THEN
+    RAISE EXCEPTION 'MIGRATION_0005_FAIL_FAST: พบข้อมูลการเข้าร่วมที่ไม่ถูกต้องจำนวน % รายการ (สถานะที่พบ: %). กรุณาตรวจสอบและแก้ไขข้อมูลก่อนรัน migration',
+      v_abnormal_count, v_samples;
+  END IF;
+END $$;--> statement-breakpoint
 ALTER TABLE "attendance_records" DROP CONSTRAINT "attendance_status_chk";--> statement-breakpoint
 -- Data step: the approved PRD (FR-06.1) names the statuses present, absent, leave, online. The old value "excused" meant leave.
 UPDATE "attendance_records" SET "attendance_status" = 'leave' WHERE "attendance_status" = 'excused';--> statement-breakpoint
@@ -17,6 +34,15 @@ ALTER TABLE "weekly_reports" ADD COLUMN "next_week_plan" text;--> statement-brea
 ALTER TABLE "weekly_reports" ADD COLUMN "support_needed_text" text;--> statement-breakpoint
 ALTER TABLE "weekly_reports" ADD COLUMN "first_submitted_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "follow_up_items" ADD CONSTRAINT "follow_up_items_completed_by_user_id_users_id_fk" FOREIGN KEY ("completed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+-- Data step: ensure no duplicate open follow_up_items violate the partial unique index
+WITH dups AS (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY source_dedup_key ORDER BY created_at ASC) AS rnum
+  FROM "follow_up_items"
+  WHERE "source_dedup_key" IS NOT NULL AND "status" IN ('open', 'in_progress')
+)
+UPDATE "follow_up_items"
+SET "status" = 'cancelled', "outcome_note" = 'ยกเลิกเนื่องจากเป็นรายการซ้ำก่อนทำ index'
+WHERE id IN (SELECT id FROM dups WHERE rnum > 1);--> statement-breakpoint
 CREATE UNIQUE INDEX "follow_up_open_dedup_uidx" ON "follow_up_items" USING btree ("source_dedup_key") WHERE "follow_up_items"."source_dedup_key" IS NOT NULL AND "follow_up_items"."status" IN ('open', 'in_progress');--> statement-breakpoint
 ALTER TABLE "attendance_records" ADD CONSTRAINT "attendance_status_chk" CHECK ("attendance_records"."attendance_status" IN ('present', 'absent', 'leave', 'online'));--> statement-breakpoint
 ALTER TABLE "follow_up_items" ADD CONSTRAINT "follow_up_source_type_chk" CHECK ("follow_up_items"."source_type" IN ('manual', 'absent_2_weeks', 'absent_3plus_weeks', 'visitor_not_returned', 'report_support'));--> statement-breakpoint

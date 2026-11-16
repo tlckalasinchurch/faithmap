@@ -21,12 +21,18 @@ export function DashboardTab({
   onSelectPeriod,
   onNavigateTab,
   onOpenGroupReport,
+  canOpenReport = true,
+  canOpenBrief = true,
+  canOpenApprovals = true,
 }: {
   workspace: WorkspacePayload;
   selectedPeriodId: string;
   onSelectPeriod: (periodId: string) => void;
   onNavigateTab: (tab: string) => void;
   onOpenGroupReport: (groupId: string) => void;
+  canOpenReport?: boolean;
+  canOpenBrief?: boolean;
+  canOpenApprovals?: boolean;
 }) {
   const { metrics, selectedPeriod, periods, bodyBreakdown } = workspace.overview;
   const submissionRate =
@@ -74,14 +80,16 @@ export function DashboardTab({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigateTab('approvals')}
-            className="fm-btn fm-btn-coral shrink-0 text-base"
-          >
-            <span>เปิดคิวตรวจ/ปลดล็อก</span>
-            <ArrowRight className="h-5 w-5" aria-hidden="true" />
-          </button>
+          {canOpenApprovals && (
+            <button
+              type="button"
+              onClick={() => onNavigateTab('approvals')}
+              className="fm-btn fm-btn-coral shrink-0 text-base"
+            >
+              <span>เปิดคิวตรวจ/ปลดล็อก</span>
+              <ArrowRight className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
         </section>
       )}
 
@@ -146,24 +154,30 @@ export function DashboardTab({
           </div>
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => onNavigateTab('report')}
-                className="fm-btn fm-btn-lime text-base"
-              >
-                <Sparkles className="h-5 w-5" aria-hidden="true" />
-                <span>+ ส่งรายงานสัปดาห์นี้ทันที</span>
-              </button>
+            {(canOpenReport || canOpenBrief) && (
+              <div className="flex flex-wrap items-center gap-2.5">
+                {canOpenReport && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab('report')}
+                    className="fm-btn fm-btn-lime text-base"
+                  >
+                    <Sparkles className="h-5 w-5" aria-hidden="true" />
+                    <span>+ ส่งรายงานสัปดาห์นี้ทันที</span>
+                  </button>
+                )}
 
-              <button
-                type="button"
-                onClick={() => onNavigateTab('brief')}
-                className="fm-btn border-[#F0F4F8] bg-[#27272A] text-base text-[#F0F4F8] hover:bg-[#1D4ED8]"
-              >
-                <span>เปิดสรุปประชุม 20:30</span>
-              </button>
-            </div>
+                {canOpenBrief && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab('brief')}
+                    className="fm-btn border-[#F0F4F8] bg-[#27272A] text-base text-[#F0F4F8] hover:bg-[#1D4ED8]"
+                  >
+                    <span>เปิดสรุปประชุม 20:30</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <select
@@ -389,26 +403,41 @@ export function DashboardTab({
           </div>
 
           <div className="divide-y-2 divide-[#141413]">
-            {workspace.groups.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => onOpenGroupReport(g.id)}
-                className="flex w-full flex-wrap items-center justify-between gap-3 bg-[var(--fm-paper)] px-6 py-4 text-left transition-colors hover:bg-[#F0F4F8]"
-              >
-                <div>
-                  <div className="text-base font-extrabold text-[#141413]">{g.nameTh}</div>
-                  <div className="text-base font-medium text-[#27272A]">
-                    อ.{g.district} · {g.bodyName}
+            {workspace.groups.map((g) => {
+              const cardContent = (
+                <>
+                  <div className="min-w-0">
+                    <div className="text-base font-extrabold text-[#141413]">{g.nameTh}</div>
+                    <div className="text-base font-medium text-[#27272A]">
+                      อ.{g.district} · {g.bodyName}
+                    </div>
                   </div>
+                  <StatusBadge
+                    status={g.currentReport.status}
+                    isBlocked={g.currentReport.isBlocked}
+                    isLate={g.currentReport.isLate}
+                  />
+                </>
+              );
+
+              return canOpenReport ? (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => onOpenGroupReport(g.id)}
+                  className="flex w-full flex-wrap items-center justify-between gap-3 bg-[var(--fm-paper)] px-6 py-4 text-left transition-colors hover:bg-[#F0F4F8]"
+                >
+                  {cardContent}
+                </button>
+              ) : (
+                <div
+                  key={g.id}
+                  className="flex w-full flex-wrap items-center justify-between gap-3 bg-[var(--fm-paper)] px-6 py-4 text-left"
+                >
+                  {cardContent}
                 </div>
-                <StatusBadge
-                  status={g.currentReport.status}
-                  isBlocked={g.currentReport.isBlocked}
-                  isLate={g.currentReport.isLate}
-                />
-              </button>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, FileText, Lock, Sparkles } from 'lucide-react';
+import { Check, Copy, FileText, Lock, Printer, Sparkles } from 'lucide-react';
 import { apiRequest } from '@/lib/api-client';
 import type { WorkspacePayload } from '@/lib/types';
 
@@ -23,9 +23,7 @@ export function MeetingBriefTab({
     workspace.briefs.find((b) => b.id === selectedBriefId) || workspace.briefs[0];
   const canGenerate =
     workspace.actor.user.systemRole === 'admin' ||
-    workspace.actor.user.systemRole === 'super_admin' ||
-    workspace.actor.user.systemRole === 'mission_leader' ||
-    workspace.actor.bodyLeaderBodyIds.length > 0;
+    workspace.actor.user.systemRole === 'super_admin';
 
   async function handleGenerateCurrentBrief() {
     setGenerating(true);
@@ -100,13 +98,13 @@ export function MeetingBriefTab({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto">
           {workspace.briefs.length > 0 && (
             <select
               aria-label="เลือกฉบับสรุปประชุม"
               value={brief?.id ?? ''}
               onChange={(e) => setSelectedBriefId(e.target.value)}
-              className="min-h-[48px] rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-4 py-2 text-base font-bold text-[#F0F4F8]"
+              className="min-h-[48px] w-full min-w-0 max-w-full rounded-xl border-2 border-[#F0F4F8] bg-[#27272A] px-4 py-2 text-base font-bold text-[#F0F4F8] sm:w-auto"
             >
               {workspace.briefs.map((b) => (
                 <option key={b.id} value={b.id} className="bg-[#141413] text-[#F0F4F8]">
@@ -117,18 +115,30 @@ export function MeetingBriefTab({
           )}
 
           {brief && (
-            <button
-              type="button"
-              onClick={handleCopySummary}
-              className="fm-btn fm-btn-paper text-base"
-            >
-              {copied ? (
-                <Check className="h-4 w-4 text-[#047857]" aria-hidden="true" />
-              ) : (
-                <Copy className="h-4 w-4" aria-hidden="true" />
-              )}
-              <span>{copied ? 'คัดลอกเข้า LINE แล้ว!' : 'คัดลอกส่งแชตผู้นำ'}</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="fm-btn fm-btn-paper text-base"
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-[#047857]" aria-hidden="true" />
+                ) : (
+                  <Copy className="h-4 w-4" aria-hidden="true" />
+                )}
+                <span>{copied ? 'คัดลอกเข้า LINE แล้ว!' : 'คัดลอกส่งแชตผู้นำ'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="fm-btn fm-btn-paper text-base"
+                title="พิมพ์หรือบันทึกเป็น PDF"
+              >
+                <Printer className="h-4 w-4" aria-hidden="true" />
+                <span>พิมพ์ / PDF</span>
+              </button>
+            </>
           )}
 
           {canGenerate && (
@@ -156,9 +166,16 @@ export function MeetingBriefTab({
       )}
 
       {!brief ? (
-        <div className="fm-panel p-8 text-center text-lg font-bold text-[#27272A]">
+        <div className="fm-panel bg-white p-8 text-center">
           <FileText className="mx-auto mb-3 h-10 w-10 text-[#141413]" aria-hidden="true" />
-          <p>ยังไม่มีเอกสารสรุปประชุมสำหรับบทบาทของคุณหรือรอบที่เลือก</p>
+          <p className="text-lg font-extrabold text-[#141413]">
+            ยังไม่มีเอกสารสรุปประชุมสำหรับรอบ {workspace.overview.selectedPeriod.periodKey}
+          </p>
+          <p className="mt-2 text-base font-medium text-[#27272A]">
+            {canGenerate
+              ? 'ยังไม่ได้สร้างสรุปประชุมประจำสัปดาห์นี้ คุณสามารถกดปุ่ม “ออกรายงานสรุป” ด้านบนเพื่อสร้างฉบับถาวรได้ทันที'
+              : 'ระบบจะแสดงสรุปประชุมเมื่อผู้ดูแลระบบออกรายงานหรือถึงรอบประชุมวันอาทิตย์ 20:30 น.'}
+          </p>
         </div>
       ) : (
         <section className="fm-panel overflow-hidden">

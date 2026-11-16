@@ -77,9 +77,11 @@ function pinDotColor(g: GroupWithContext): string {
 export function KalasinMapTab({
   workspace,
   onSelectGroupReport,
+  canOpenReport = true,
 }: {
   workspace: WorkspacePayload;
   onSelectGroupReport: (groupId: string) => void;
+  canOpenReport?: boolean;
 }) {
   // DEC-06, DEC-17: field points come from the server, which decides who may read them (admin, the Body Leader of
   // the point's Body, the assigned coordinator). The list is never part of the browser bundle.
@@ -696,14 +698,16 @@ export function KalasinMapTab({
               </div>
 
               <div className="space-y-2.5 border-t-2 border-[var(--fm-ink)] bg-[var(--fm-canvas)] p-5">
-                <button
-                  type="button"
-                  onClick={() => onSelectGroupReport(selected.group.id)}
-                  className="fm-btn fm-btn-lime w-full whitespace-nowrap text-base"
-                >
-                  <span>เปิดหน้ารายงานกลุ่มนี้</span>
-                  <ArrowUpRight className="h-5 w-5" aria-hidden="true" />
-                </button>
+                {canOpenReport && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectGroupReport(selected.group.id)}
+                    className="fm-btn fm-btn-lime w-full whitespace-nowrap text-base"
+                  >
+                    <span>เปิดหน้ารายงานกลุ่มนี้</span>
+                    <ArrowUpRight className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                )}
                 <a
                   href={`https://www.google.com/maps/dir/?api=1&destination=${selected.group.latitude},${selected.group.longitude}`}
                   target="_blank"
@@ -828,13 +832,15 @@ export function KalasinMapTab({
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--fm-ink)]/20 pt-2.5 text-base font-bold text-[var(--fm-ink-muted)]">
                   <span>{g.bodyName || 'รอจัดสรรบอดี้'}</span>
-                  <button
-                    type="button"
-                    onClick={() => onSelectGroupReport(g.id)}
-                    className="min-h-[48px] rounded-lg border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3 py-1.5 font-extrabold text-[var(--fm-ink)] hover:bg-[var(--fm-lime)]"
-                  >
-                    ส่งรายงาน
-                  </button>
+                  {canOpenReport && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectGroupReport(g.id)}
+                      className="min-h-[48px] rounded-lg border-2 border-[var(--fm-ink)] bg-[var(--fm-paper)] px-3 py-1.5 font-extrabold text-[var(--fm-ink)] hover:bg-[var(--fm-lime)]"
+                    >
+                      ส่งรายงาน
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

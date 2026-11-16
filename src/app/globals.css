@@ -53,7 +53,7 @@ h3,
 code,
 pre,
 .font-mono {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono), var(--font-sans), sans-serif;
 }
 
 ::selection {
@@ -174,6 +174,8 @@ a {
 
   .fm-input {
     min-height: 48px;
+    min-width: 0;
+    max-width: 100%;
     border: 2px solid var(--fm-ink);
     border-radius: 0.875rem;
     background-color: #ffffff;
@@ -212,3 +214,49 @@ a {
   width: 48px;
   height: 48px;
 }
+
+/* Print and PDF export stylesheet (FR-12.1) */
+@media print {
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+
+  header,
+  nav,
+  aside,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  .fm-panel,
+  .fm-panel-ink {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #cccccc !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    margin-bottom: 1rem;
+    padding: 1rem !important;
+  }
+
+  .fm-panel-ink * {
+    color: #000000 !important;
+  }
+
+  .fm-sticker {
+    box-shadow: none !important;
+    border: 1px solid #666666 !important;
+    color: #000000 !important;
+    background: transparent !important;
+  }
+
+  a[href]::after {
+    content: none !important;
+  }
+}
+

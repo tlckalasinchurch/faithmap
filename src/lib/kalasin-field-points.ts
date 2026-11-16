@@ -10,16 +10,16 @@ export interface FieldMissionPoint {
 }
 
 /**
- * 23 verified Kalasin field mission points (Team G) imported from Google Sheet:
- * "พิกัดจุดพันธกิจทีม G - Registration Data" (gid=2126759810).
+ * 23 Kalasin field mission points (Team G) with synthetic coordinator placeholders (G-19 resolved).
+ * Point names and coordinates preserved from registration data; real personal data removed.
  */
 export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
   {
     no: 1,
     name: 'บ้านวราภรณ์',
     team: 'G',
-    coordinator: 'เบญจมัย เลี่ยมเพชรรัตน์',
-    phone: '083-026-3503',
+    coordinator: 'ผู้ประสานงาน จุดที่ 1',
+    phone: '080-000-0001',
     latitude: 16.4266124,
     longitude: 103.5216847,
     mapsUrl:
@@ -29,8 +29,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 2,
     name: 'วังเกาะเหล็ก',
     team: 'G',
-    coordinator: 'เบญจมัย เลี่ยมเพชรรัตน์',
-    phone: '083-026-3503',
+    coordinator: 'ผู้ประสานงาน จุดที่ 2',
+    phone: '080-000-0002',
     latitude: 16.467563,
     longitude: 103.4986331,
     mapsUrl:
@@ -40,8 +40,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 3,
     name: 'โนนเที่ยง',
     team: 'G',
-    coordinator: 'ผุสดี แซ่ก่วย',
-    phone: '088-275-5075',
+    coordinator: 'ผู้ประสานงาน จุดที่ 3',
+    phone: '080-000-0003',
     latitude: 16.563713,
     longitude: 103.7597931,
     mapsUrl:
@@ -51,8 +51,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 4,
     name: 'ดอนยูง',
     team: 'G',
-    coordinator: 'สรรเสริญ ดวงจิตร',
-    phone: '080-858-7037',
+    coordinator: 'ผู้ประสานงาน จุดที่ 4',
+    phone: '080-000-0004',
     latitude: 16.314069,
     longitude: 103.555431,
     mapsUrl:
@@ -62,8 +62,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 5,
     name: 'โพนงาม',
     team: 'G',
-    coordinator: 'สรรเสริญ ดวงจิตร',
-    phone: '080-858-7037',
+    coordinator: 'ผู้ประสานงาน จุดที่ 5',
+    phone: '080-000-0005',
     latitude: 16.318595,
     longitude: 103.676063,
     mapsUrl:
@@ -73,8 +73,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 6,
     name: 'กมลาไสย',
     team: 'G',
-    coordinator: 'สุดใจ จำปาเหลือง',
-    phone: '090-224-0628',
+    coordinator: 'ผู้ประสานงาน จุดที่ 6',
+    phone: '080-000-0006',
     latitude: 16.335814,
     longitude: 103.582272,
     mapsUrl:
@@ -84,8 +84,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 7,
     name: 'ยางตลาด',
     team: 'G',
-    coordinator: 'สมเพียร ศิริเย็น',
-    phone: '091-868-7535',
+    coordinator: 'ผู้ประสานงาน จุดที่ 7',
+    phone: '080-000-0007',
     latitude: 16.3913333,
     longitude: 103.3550556,
     mapsUrl:
@@ -95,8 +95,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 8,
     name: 'หนองแวงแสน',
     team: 'G',
-    coordinator: 'ดาวใจ โพธิสม',
-    phone: '091-868-7535',
+    coordinator: 'ผู้ประสานงาน จุดที่ 8',
+    phone: '080-000-0008',
     latitude: 16.45712,
     longitude: 103.6726381,
     mapsUrl:
@@ -106,8 +106,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 9,
     name: 'โคกเครือ',
     team: 'G',
-    coordinator: 'ดาวใจ โพธิสม',
-    phone: '091-868-7535',
+    coordinator: 'ผู้ประสานงาน จุดที่ 9',
+    phone: '080-000-0009',
     latitude: 16.394841,
     longitude: 103.4384221,
     mapsUrl:
@@ -117,8 +117,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 10,
     name: 'ดอนย่านาง',
     team: 'G',
-    coordinator: 'ดาวใจ โพธิสม',
-    phone: '091-868-7535',
+    coordinator: 'ผู้ประสานงาน จุดที่ 10',
+    phone: '080-000-0010',
     latitude: 16.412665,
     longitude: 103.4549231,
     mapsUrl:
@@ -128,8 +128,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 11,
     name: 'บ้านเสียว',
     team: 'G',
-    coordinator: 'ดาวใจ โพธิสม',
-    phone: '091-868-7535',
+    coordinator: 'ผู้ประสานงาน จุดที่ 11',
+    phone: '080-000-0011',
     latitude: 16.336667,
     longitude: 103.4255921,
     mapsUrl:
@@ -139,8 +139,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 12,
     name: 'เชียงเครือ',
     team: 'G',
-    coordinator: 'ดาวใจ โพธิสม',
-    phone: '091-868-7535',
+    coordinator: 'ผู้ประสานงาน จุดที่ 12',
+    phone: '080-000-0012',
     latitude: 16.443075,
     longitude: 103.6173961,
     mapsUrl:
@@ -150,8 +150,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 13,
     name: 'บ้านหลุบ',
     team: 'G',
-    coordinator: 'สถิต เหล็กเพ็ชร',
-    phone: '085-803-4784',
+    coordinator: 'ผู้ประสานงาน จุดที่ 13',
+    phone: '080-000-0013',
     latitude: 16.411739,
     longitude: 103.518424,
     mapsUrl:
@@ -161,8 +161,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 14,
     name: 'เขาวง',
     team: 'G',
-    coordinator: 'บุญเริ่ม บาลเพ็ชร',
-    phone: '061-074-7693',
+    coordinator: 'ผู้ประสานงาน จุดที่ 14',
+    phone: '080-000-0014',
     latitude: 16.6408139,
     longitude: 104.1309969,
     mapsUrl: 'https://www.google.com/maps?q=16.6408139,104.1309969',
@@ -171,8 +171,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 15,
     name: 'บ้านภูฮัง',
     team: 'G',
-    coordinator: 'เสาวนีย์ จิตรักษ์',
-    phone: '065-054-1082',
+    coordinator: 'ผู้ประสานงาน จุดที่ 15',
+    phone: '080-000-0015',
     latitude: 16.811819,
     longitude: 103.2844831,
     mapsUrl:
@@ -182,8 +182,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 16,
     name: 'บ้านภูฮัง2',
     team: 'G',
-    coordinator: 'เสาวนีย์ จิตรักษ์',
-    phone: '065-054-1082',
+    coordinator: 'ผู้ประสานงาน จุดที่ 16',
+    phone: '080-000-0016',
     latitude: 16.811819,
     longitude: 103.2844831,
     mapsUrl:
@@ -193,8 +193,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 17,
     name: 'ท่าคันโท 1',
     team: 'G',
-    coordinator: 'เสาวนีย์ จิตรักษ์',
-    phone: '065-054-1082',
+    coordinator: 'ผู้ประสานงาน จุดที่ 17',
+    phone: '080-000-0017',
     latitude: 16.933993,
     longitude: 103.2474601,
     mapsUrl:
@@ -204,8 +204,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 18,
     name: 'นาตาล',
     team: 'G',
-    coordinator: 'เสาวนีย์ จิตรักษ์',
-    phone: '065-054-1082',
+    coordinator: 'ผู้ประสานงาน จุดที่ 18',
+    phone: '080-000-0018',
     latitude: 16.9340293,
     longitude: 103.2491913,
     mapsUrl:
@@ -215,8 +215,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 19,
     name: 'คำใหญ่',
     team: 'G',
-    coordinator: 'รัตนาภรณ์ แก้วเกตุ',
-    phone: '064-596-5869',
+    coordinator: 'ผู้ประสานงาน จุดที่ 19',
+    phone: '080-000-0019',
     latitude: 16.7001131,
     longitude: 103.4089073,
     mapsUrl:
@@ -226,8 +226,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 20,
     name: 'คำศรี',
     team: 'G',
-    coordinator: 'รัตนาภรณ์ แก้วเกตุ',
-    phone: '064-596-5869',
+    coordinator: 'ผู้ประสานงาน จุดที่ 20',
+    phone: '080-000-0020',
     latitude: 16.7001131,
     longitude: 103.4089073,
     mapsUrl:
@@ -237,8 +237,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 21,
     name: 'บ้านหัวนาคำ',
     team: 'G',
-    coordinator: 'แม่โยด',
-    phone: '082-252-4101',
+    coordinator: 'ผู้ประสานงาน จุดที่ 21',
+    phone: '080-000-0021',
     latitude: 16.495792,
     longitude: 104.0190491,
     mapsUrl:
@@ -248,8 +248,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 22,
     name: 'บ้านดอนอุมรัว',
     team: 'G',
-    coordinator: 'ยายเพ็ง',
-    phone: '093-767-2991',
+    coordinator: 'ผู้ประสานงาน จุดที่ 22',
+    phone: '080-000-0022',
     latitude: 16.5179444,
     longitude: 104.0816944,
     mapsUrl:
@@ -259,8 +259,8 @@ export const KALASIN_TEAM_G_POINTS: FieldMissionPoint[] = [
     no: 23,
     name: 'บ้านบัวขาว',
     team: 'G',
-    coordinator: 'เพลินพิศ',
-    phone: '097-120-7102',
+    coordinator: 'ผู้ประสานงาน จุดที่ 23',
+    phone: '080-000-0023',
     latitude: 16.522904,
     longitude: 104.0441211,
     mapsUrl:

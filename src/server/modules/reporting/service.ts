@@ -261,6 +261,7 @@ function maskDraftReportForViewer(
       supervisorReviewedAt: null,
       approvedAt: null,
       revisionReason: null,
+      supervisorNotes: null,
       version: report.version,
     };
   }
@@ -286,6 +287,8 @@ function redactRestrictedReportText<
     followupNeedsText: string | null;
     nextWeekPlan: string | null;
     supportNeededText: string | null;
+    revisionReason: string | null;
+    supervisorNotes: string | null;
   },
 >(
   report: T,
@@ -307,6 +310,9 @@ function redactRestrictedReportText<
     followupNeedsText: null,
     nextWeekPlan: null,
     supportNeededText: null,
+    // DEC-06 / Acceptance Defect #4: supervisor feedback and revision reasons can contain sensitive pastoral text.
+    revisionReason: null,
+    supervisorNotes: null,
   };
 }
 
@@ -411,11 +417,27 @@ export async function getReportDetailForGroup(
   // A pastor (mission_leader) can read the report but not these notes.
   const canReadAbsenceNotes = canViewUnmaskedGroupPii(actor, grp.id, grp.bodyId);
   const visibleAttendance = canReadAbsenceNotes ? attRows : attRows.map((r) => ({ ...r, notes: null }));
+  const visibleAuditEvents = canReadAbsenceNotes
+    ? auditRows
+    : auditRows.map((ev) => {
+        const safeReason = ev.eventType === 'workflow_blocked' ? ev.reason : null;
+        let safeMetadata = ev.metadata;
+        if (safeMetadata && typeof safeMetadata === 'object' && 'supervisorNotes' in safeMetadata) {
+          const copy = { ...(safeMetadata as Record<string, unknown>) };
+          delete copy.supervisorNotes;
+          safeMetadata = copy;
+        }
+        return {
+          ...ev,
+          reason: safeReason,
+          metadata: safeMetadata,
+        };
+      });
 
   return {
     report: masked,
     attendanceRecords: visibleAttendance,
-    auditEvents: auditRows,
+    auditEvents: visibleAuditEvents,
   };
 }
 
@@ -501,13 +523,32 @@ function assertPeriodAcceptsReports(
   }
 }
 
-/** Attendance can only name members who belong to the group, once each. */
+const ALLOWED_ATTENDANCE_STATUSES = new Set(['present', 'absent', 'leave', 'online']);
+
+/** Attendance can only name active members who belong to the group, once each. */
 async function assertAttendanceBelongsToGroup(
   db: FaithMapDb,
   groupId: string,
   attendance: ReportPayloadInput['attendance']
 ): Promise<void> {
-  if (!attendance || attendance.length === 0) return;
+  if (attendance === undefined || attendance === null) return;
+  if (!Array.isArray(attendance)) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลการเช็คชื่อต้องเป็นรายการสมาชิก');
+  }
+  if (attendance.length === 0) return;
+
+  for (const item of attendance) {
+    if (
+      !item ||
+      typeof item.memberId !== 'string' ||
+      !item.memberId.trim() ||
+      typeof item.attendanceStatus !== 'string' ||
+      !ALLOWED_ATTENDANCE_STATUSES.has(item.attendanceStatus)
+    ) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'ข้อมูลหรือสถานะการเช็คชื่อไม่ถูกต้อง');
+    }
+  }
+
   const ids = attendance.map((a) => a.memberId);
   if (new Set(ids).size !== ids.length) {
     throw new AppError(400, 'ATTENDANCE_DUPLICATE_MEMBER', 'มีสมาชิกซ้ำในรายชื่อผู้เข้าร่วม');
@@ -524,6 +565,32 @@ async function assertAttendanceBelongsToGroup(
     );
   if (rows.length !== ids.length) {
     throw new AppError(400, 'MEMBER_NOT_IN_GROUP', 'รายชื่อผู้เข้าร่วมมีสมาชิกที่ไม่ได้อยู่ในกลุ่มนี้');
+  }
+}
+
+/** Acceptance Defect #1: On submit with meetingHeld=true, every active member of the group must be marked. */
+async function assertCompleteAttendanceForSubmit(
+  db: FaithMapDb,
+  groupId: string,
+  attendance: ReportPayloadInput['attendance']
+): Promise<void> {
+  const activeRows = await db
+    .select({ memberId: groupMemberships.memberId })
+    .from(groupMemberships)
+    .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.isActive, true)));
+
+  if (activeRows.length === 0) {
+    return;
+  }
+
+  const submittedIds = new Set((attendance ?? []).map((a) => a.memberId));
+  const missingCount = activeRows.filter((row) => !submittedIds.has(row.memberId)).length;
+  if (!attendance || attendance.length === 0 || missingCount > 0) {
+    throw new AppError(
+      400,
+      'ATTENDANCE_INCOMPLETE',
+      `กรุณาเช็คชื่อสมาชิกที่ใช้งานอยู่ในกลุ่มให้ครบทั้ง ${activeRows.length} คน (ยังขาด ${missingCount} คน)`
+    );
   }
 }
 
@@ -558,6 +625,16 @@ function normalizeCounts(input: ReportPayloadInput) {
       offeringAmountThb: '0.00',
     };
   }
+  const rawOffering = input.offeringAmountThb ?? 0;
+  const offeringNum =
+    typeof rawOffering === 'string'
+      ? rawOffering.trim() === ''
+        ? 0
+        : Number(rawOffering.trim())
+      : Number(rawOffering);
+  if (!Number.isFinite(offeringNum) || offeringNum < 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'ยอดถวายทรัพย์ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+  }
   // FR-07.2: member attendance is derived from the marks when the report has marks (present and online count, PRD section 4).
   // A typed number can then never disagree with the list. A report without marks keeps the typed number.
   const marks = input.attendance ?? [];
@@ -571,7 +648,7 @@ function normalizeCounts(input: ReportPayloadInput) {
     newVisitorsCount: Math.max(0, input.newVisitorsCount),
     returningVisitorsCount: Math.max(0, input.returningVisitorsCount),
     childrenCount: Math.max(0, input.childrenCount),
-    offeringAmountThb: Number(input.offeringAmountThb ?? 0).toFixed(2),
+    offeringAmountThb: offeringNum.toFixed(2),
   };
 }
 
@@ -594,13 +671,14 @@ export async function saveDraftReport(
   const [draftPeriod] = await db.select().from(reportingPeriods).where(eq(reportingPeriods.id, periodId));
   if (!draftPeriod) throw new AppError(404, 'PERIOD_NOT_FOUND', 'ไม่พบรอบรายงานที่ระบุ');
   assertPeriodAcceptsReports(draftPeriod, now);
-  await assertAttendanceBelongsToGroup(db, groupId, input.attendance);
 
   const [grp] = await db
     .select()
     .from(houseMissionGroups)
     .where(eq(houseMissionGroups.id, groupId));
   if (!grp) throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจบ้าน');
+  await assertAttendanceBelongsToGroup(db, groupId, input.attendance);
+  const counts = normalizeCounts(input);
 
   const [existing] = await db
     .select()
@@ -630,7 +708,6 @@ export async function saveDraftReport(
     );
   }
 
-  const counts = normalizeCounts(input);
   const supCheck = await evaluateRequiresSupervisorReview(db, groupId);
 
   return db.transaction(async (tx) => {
@@ -714,27 +791,21 @@ export async function submitReport(
     );
   }
 
-  if (!input.meetingHeld && (!input.notHeldReason || !input.notHeldReason.trim())) {
-    throw new AppError(
-      400,
-      'NOT_HELD_REASON_REQUIRED',
-      'กรุณาระบุเหตุผลเมื่อกลุ่มไม่ได้พบปะในสัปดาห์นี้'
-    );
-  }
-
   const [period] = await db
     .select()
     .from(reportingPeriods)
     .where(eq(reportingPeriods.id, periodId));
   if (!period) throw new AppError(404, 'PERIOD_NOT_FOUND', 'ไม่พบรอบรายงานที่ระบุ');
   assertPeriodAcceptsReports(period, now);
-  await assertAttendanceBelongsToGroup(db, groupId, input.attendance);
 
   const [grp] = await db
     .select()
     .from(houseMissionGroups)
     .where(eq(houseMissionGroups.id, groupId));
   if (!grp) throw new AppError(404, 'GROUP_NOT_FOUND', 'ไม่พบกลุ่มพันธกิจบ้าน');
+
+  await assertAttendanceBelongsToGroup(db, groupId, input.attendance);
+  const counts = normalizeCounts(input);
 
   const [existing] = await db
     .select()
@@ -757,7 +828,18 @@ export async function submitReport(
     throw new AppError(409, 'VERSION_CONFLICT', 'รายงานมีการแก้ไขซ้อน กรุณาโหลดข้อมูลล่าสุด');
   }
 
-  const counts = normalizeCounts(input);
+  if (!input.meetingHeld && (!input.notHeldReason || !input.notHeldReason.trim())) {
+    throw new AppError(
+      400,
+      'NOT_HELD_REASON_REQUIRED',
+      'กรุณาระบุเหตุผลเมื่อกลุ่มไม่ได้พบปะในสัปดาห์นี้'
+    );
+  }
+
+  if (input.meetingHeld) {
+    await assertCompleteAttendanceForSubmit(db, groupId, input.attendance);
+  }
+
   const late = isPastDeadline(now, period.deadlineAt);
   const supCheck = await evaluateRequiresSupervisorReview(db, groupId);
   const readiness = await evaluateBodyApprovalReadiness(db, grp.bodyId, actor.user.id);
